@@ -10,7 +10,6 @@ import time
 from typing import Dict, Any
 from classifier import LlamaSentimentClassifier
 from consistency_confidence import ConfidenceScorer
-# Fine-tuning removed - was untested dead code
 from datasets import get_test_sets, print_dataset_summary
 
 
@@ -103,7 +102,6 @@ def demonstrate_confidence_scoring(scorer: ConfidenceScorer):
     print("Higher consistency across multiple runs = higher confidence.")
     print()
 
-    # Test a mix of obvious and unclear examples
     test_examples = [
         {"text": "This is absolutely amazing!", "expected_confidence": "HIGH"},
         {"text": "That's so skibidi", "expected_confidence": "LOW"},
@@ -125,7 +123,6 @@ def demonstrate_confidence_scoring(scorer: ConfidenceScorer):
             print(f"  Confidence: {result['confidence']:.2f} ({confidence_level})")
             print(f"  Response distribution: {result['response_distribution']}")
 
-            # Check if our hypothesis was correct
             if expected == confidence_level:
                 print("  ✅ Matches expected confidence level!")
             else:
@@ -136,7 +133,6 @@ def demonstrate_confidence_scoring(scorer: ConfidenceScorer):
         print()
 
 
-# Few-shot learning removed - YAGNI for core confidence estimation
 
 
 def run_comprehensive_evaluation(scorer: ConfidenceScorer):
@@ -154,7 +150,6 @@ def run_comprehensive_evaluation(scorer: ConfidenceScorer):
     print("This will take a few minutes as we test multiple samples per example.")
     print()
 
-    # Test standard examples (should have high confidence)
     standard_examples = test_sets["standard"][:5]  # Limit for demo
     print("Testing STANDARD examples (expected: high confidence):")
 
@@ -167,7 +162,6 @@ def run_comprehensive_evaluation(scorer: ConfidenceScorer):
 
     print(f"Average confidence on standard examples: {avg_standard_confidence:.2f}")
 
-    # Test Gen Z slang (should have lower confidence)
     slang_examples = test_sets["gen_z_slang"][:5]  # Limit for demo
     print(f"\nTesting GEN Z SLANG examples (expected: lower confidence):")
 
@@ -209,21 +203,17 @@ def main():
     print("• HIGH confidence on familiar language (standard English)")
     print("• LOW confidence on unfamiliar/ambiguous language")
 
-    # Initialize components
     classifier = LlamaSentimentClassifier()
     scorer = ConfidenceScorer(classifier)
 
-    # Test connection first
     if not test_connection(classifier):
         print("\n🛑 Cannot proceed without model loading.")
         print("Please follow the troubleshooting steps above and try again.")
         sys.exit(1)
 
-    # Show dataset information
     print_section("Dataset Overview")
     print_dataset_summary()
 
-    # Run demonstrations in order
     try:
         demonstrate_basic_classification(classifier)
         demonstrate_confidence_scoring(scorer)

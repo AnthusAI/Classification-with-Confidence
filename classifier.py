@@ -34,14 +34,12 @@ class LlamaSentimentClassifier:
             print("This may take a few minutes and requires significant memory...")
 
             try:
-                # Load with authentication
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
                 self.model = AutoModelForCausalLM.from_pretrained(
                     self.model_name,
                     torch_dtype=torch.float16
                 )
 
-                # Use best available device (MPS for Apple Silicon, CUDA for NVIDIA, CPU fallback)
                 if torch.backends.mps.is_available():
                     device = "mps"
                 elif torch.cuda.is_available():
@@ -51,7 +49,6 @@ class LlamaSentimentClassifier:
 
                 self.model = self.model.to(device)
 
-                # Set pad token
                 if self.tokenizer.pad_token is None:
                     self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -80,13 +77,11 @@ class LlamaSentimentClassifier:
         # Build the system message
         system_msg = "You are a sentiment classifier. Classify the sentiment of the given text as either 'positive', 'negative', or 'neutral'. Respond with only one word."
 
-        # Add few-shot examples to system message if provided
         if few_shot_examples:
             system_msg += "\n\nExamples:"
             for example in few_shot_examples:
                 system_msg += f"\nText: {example['text']}\nSentiment: {example['sentiment']}"
 
-        # Create the Llama 3.1 chat format
         prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
 {system_msg}<|eot_id|><|start_header_id|>user<|end_header_id|>
@@ -115,11 +110,10 @@ Text: {text}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
             device = next(self.model.parameters()).device
             inputs = {k: v.to(device) for k, v in inputs.items()}
 
-            # Generate response
             with torch.no_grad():
                 outputs = self.model.generate(
                     **inputs,
-                    max_new_tokens=10,  # We only need one word
+                    max_new_tokens=10,
                     do_sample=temperature > 0,
                     temperature=temperature if temperature > 0 else None,
                     top_p=0.9,
@@ -147,7 +141,6 @@ Text: {text}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
         if not response:
             return None
 
-        # Extract the first word and normalize
         first_word = response.split()[0].lower().strip('.,!?')
 
         # Map various response formats to standard labels
@@ -162,7 +155,6 @@ Text: {text}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
         elif first_word in neutral_words:
             return 'neutral'
 
-        # If we can't parse it clearly, return None
         return None
 
     def classify_single(self, text: str, few_shot_examples: Optional[List[Dict[str, str]]] = None) -> Optional[str]:
@@ -225,7 +217,6 @@ def main():
     """
     classifier = LlamaSentimentClassifier()
 
-    # Test connection
     print("Testing model...")
     if not classifier.test_connection():
         print("❌ Failed to load model. Check setup instructions.")
@@ -233,7 +224,6 @@ def main():
 
     print("✅ Model working successfully!")
 
-    # Test basic classification
     test_texts = [
         "I love this!",
         "This is terrible.",

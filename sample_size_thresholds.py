@@ -77,7 +77,7 @@ def create_sample_size_visualization():
     calibrated_confidences = isotonic_cal.predict_proba(confidences)
     
     # Create threshold analysis
-    thresholds = np.arange(0.3, 1.0, 0.02)  # Same range as original
+    thresholds = np.arange(0.3, 1.0, 0.02)
     
     raw_counts = []
     cal_counts = []

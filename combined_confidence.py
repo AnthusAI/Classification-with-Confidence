@@ -15,7 +15,7 @@ Requirements:
 """
 import math
 from typing import Dict, List, Optional, Any, Callable
-from logprobs_confidence import LogprobsConfidenceScorer
+from logprobs_confidence import TransformerLogprobsClassifier
 from consistency_confidence import ConfidenceScorer
 from classifier import LlamaSentimentClassifier
 
@@ -36,7 +36,7 @@ class CombinedConfidenceScorer:
         """
         self.classifier = classifier
         self.consistency_scorer = ConfidenceScorer(classifier)
-        self.logprobs_scorer = LogprobsConfidenceScorer(openai_api_key)
+        self.logprobs_scorer = TransformerLogprobsClassifier()
 
     def get_combined_confidence(self, text: str,
                               num_consistency_samples: int = 5,
@@ -57,20 +57,16 @@ class CombinedConfidenceScorer:
         print(f"🔬 Combined Confidence Analysis: '{text[:50]}{'...' if len(text) > 50 else ''}'")
         print("-" * 60)
 
-        # Method 1: Get logprobs confidence
         print("📊 Method 1: Token Probability Analysis")
         if use_openai_logprobs:
-            logprobs_result = self.logprobs_scorer.get_openai_logprobs_confidence(text, model)
-        else:
-            # Use simulation for demonstration
-            classification = self.classifier.classify_single(text)
-            logprobs_result = self.logprobs_scorer.simulate_logprobs_confidence(text, classification)
+            print("  Warning: OpenAI logprobs not implemented, using Transformer logprobs instead")
+
+        logprobs_result = self.logprobs_scorer.get_real_logprobs_confidence(text)
 
         logprobs_conf = logprobs_result.get('confidence', 0.0)
         print(f"  Logprobs confidence: {logprobs_conf:.3f}")
-        print(f"  Token distribution: {logprobs_result.get('token_probabilities', {})}")
+        print(f"  Token distribution: {logprobs_result.get('sentiment_probabilities', {})}")
 
-        # Method 2: Get consistency confidence
         print(f"\n🔄 Method 2: Response Consistency Analysis")
         consistency_result = self.consistency_scorer.classify_with_confidence(
             text, num_samples=num_consistency_samples
@@ -134,11 +130,9 @@ class CombinedConfidenceScorer:
             weight_consistency = 0.4
             strategy = "balanced_weighting"
 
-        # Calculate combined confidence
         combined_conf = (weight_logprobs * logprobs_conf +
                         weight_consistency * consistency_conf)
 
-        # Determine final prediction (prefer consistency result for reliability)
         final_prediction = consistency_result.get('prediction',
                                                 logprobs_result.get('prediction'))
 
@@ -172,8 +166,6 @@ class CombinedConfidenceScorer:
             Calibrated confidence score
         """
         if validation_data is None:
-            # Use simple sigmoid calibration for demonstration
-            # In practice, this would be trained on validation data
             return self._sigmoid_calibration(raw_confidence)
         else:
             # Implement proper calibration with validation data
@@ -190,7 +182,6 @@ class CombinedConfidenceScorer:
             Calibrated confidence score
         """
         # Simple calibration: adjust for overconfidence
-        # This is a demonstration - real calibration needs validation data
         adjusted = raw_conf * 0.8 + 0.1  # Reduce overconfidence
         return max(0.0, min(1.0, adjusted))
 
@@ -207,7 +198,6 @@ class CombinedConfidenceScorer:
             Calibrated confidence score
         """
         # Placeholder for proper Platt scaling implementation
-        # In practice, this would fit a sigmoid to validation data
         return self._sigmoid_calibration(raw_conf)
 
 
@@ -218,11 +208,9 @@ def demonstrate_combined_confidence():
     print("🎯 Method 3: Combined Confidence Scoring Demonstration")
     print("=" * 70)
 
-    # Initialize components
     classifier = LlamaSentimentClassifier()
     combined_scorer = CombinedConfidenceScorer(classifier)
 
-    # Test connection
     if not classifier.test_connection():
         print("❌ Cannot load model. Please ensure:")
         print("  1. Hugging Face access: huggingface-cli login")
@@ -232,7 +220,6 @@ def demonstrate_combined_confidence():
     print("✅ Model loaded successfully!")
     print()
 
-    # Test examples showing different confidence patterns
     examples = [
         "This is absolutely amazing!",  # Expected: High confidence both methods
         "I am happy to be sad about this fantastic disaster",  # Expected: Low confidence
@@ -245,10 +232,9 @@ def demonstrate_combined_confidence():
         result = combined_scorer.get_combined_confidence(
             text,
             num_consistency_samples=3,  # Fewer samples for demo speed
-            use_openai_logprobs=False   # Use simulation
+            use_openai_logprobs=False
         )
 
-        # Show calibrated result
         calibrated_conf = combined_scorer.calibrate_confidence(result['combined_confidence'])
         print(f"  📊 Calibrated confidence: {calibrated_conf:.3f}")
         print()

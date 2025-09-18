@@ -15,11 +15,9 @@ def run_confidence_comparison():
     print("🔬 Confidence Comparison: Standard English vs Gen Z Slang")
     print("=" * 60)
 
-    # Initialize components
     classifier = LlamaSentimentClassifier()
     scorer = ConfidenceScorer(classifier)
 
-    # Test connection
     print("Loading model...")
     if not classifier.test_connection():
         print("❌ Model not available. Check setup instructions.")
@@ -56,7 +54,6 @@ def run_confidence_comparison():
             print(f"  Confidence: {result['confidence']:.3f}")
             print(f"  Distribution: {result['response_distribution']}")
 
-            # Check accuracy
             correct = "✅" if result['prediction'] == example['expected'] else "❌"
             print(f"  Expected: {example['expected']} {correct}")
         else:

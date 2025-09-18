@@ -121,7 +121,7 @@ def create_binning_explanation():
 def plot_reliability_with_bins(ax, confidences, accuracies, title, metrics_text):
     """Plot reliability diagram with visible bins."""
     
-    n_bins = 20  # Use 20 bins for finer granularity
+    n_bins = 20
     bin_boundaries = np.linspace(0, 1, n_bins + 1)
     bin_lowers = bin_boundaries[:-1]
     bin_uppers = bin_boundaries[1:]

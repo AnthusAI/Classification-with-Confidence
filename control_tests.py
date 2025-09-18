@@ -104,7 +104,7 @@ def test_contradictory_text():
     print(f"Testing: '{text}'")
     print("(This was the ONLY example that showed uncertainty with Llama 3.1)")
 
-    result = scorer.classify_with_confidence(text, num_samples=7)  # Use 7 samples like in our test
+    result = scorer.classify_with_confidence(text, num_samples=7)
 
     if result['prediction']:
         print(f"  Predicted: {result['prediction']}")
@@ -167,7 +167,6 @@ def main():
     print("This script reproduces our key experimental discoveries.")
     print("These tests validate that the confidence methodology works correctly.")
 
-    # Test connection first
     classifier = LlamaSentimentClassifier()
     if not classifier.test_connection():
         print("\n❌ Cannot load model. Please ensure:")
@@ -177,7 +176,6 @@ def main():
 
     print(f"\n✅ Connected to model: {classifier.model_name}")
 
-    # Run all tests
     standard_conf = test_standard_sentiment()
     slang_conf = test_gen_z_slang()
     contradictory_conf = test_contradictory_text()
@@ -195,7 +193,6 @@ def main():
 
     print(f"\n🔍 KEY FINDINGS:")
 
-    # Check if we found the expected pattern
     if contradictory_conf < 0.9:
         print("✅ Methodology validated - contradictory text shows uncertainty!")
     else:

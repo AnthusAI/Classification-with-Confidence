@@ -69,7 +69,7 @@ Using Hugging Face Transformers, we can measure confidence through multiple appr
    - Few-shot learning examples for improvement
    - Organized by categories for systematic testing
 
-3. **`confidence.py`**: Confidence scoring through consistency
+3. **`consistency_confidence.py`**: Confidence scoring through consistency
    - Multiple independent classifications
    - Response agreement calculation
    - Batch processing capabilities

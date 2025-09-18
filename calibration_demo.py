@@ -188,7 +188,7 @@ def main():
         print(f"  {cat}: {count} samples")
     
     # Use ISOTONIC calibration for visualizations (best threshold performance)
-    calibrated_confidences = isotonic_confidences  # Use isotonic since it preserves high-confidence predictions
+    calibrated_confidences = isotonic_confidences
     
     # Create visualizations
     print("📈 Creating visualizations...")

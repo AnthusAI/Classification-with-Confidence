@@ -47,7 +47,6 @@ class ConfidenceScorer:
 
         print(f"Running {num_samples} classifications for: '{text[:50]}{'...' if len(text) > 50 else ''}'")
 
-        # Collect multiple independent classifications
         for i in range(num_samples):
             if i > 0 and delay_between_calls > 0:
                 time.sleep(delay_between_calls)
@@ -58,10 +57,8 @@ class ConfidenceScorer:
             if response is not None:
                 valid_responses.append(response)
 
-            # Show progress
             print(f"  Sample {i+1}/{num_samples}: {response}")
 
-        # Handle case where no valid responses
         if not valid_responses:
             return {
                 'prediction': None,
@@ -72,11 +69,9 @@ class ConfidenceScorer:
                 'error': 'No valid responses received'
             }
 
-        # Count response frequencies
         response_counts = Counter(valid_responses)
         most_common_response, most_common_count = response_counts.most_common(1)[0]
 
-        # Calculate confidence as the proportion of responses that agree with the majority
         confidence = most_common_count / len(valid_responses)
 
         return {
@@ -149,7 +144,6 @@ class ConfidenceScorer:
                     'category': example.get('category', 'unknown')
                 })
 
-        # Calculate overall accuracy
         overall_accuracy = correct_predictions / total_predictions if total_predictions > 0 else 0.0
 
         # Group by confidence levels
@@ -159,7 +153,6 @@ class ConfidenceScorer:
             'low': [r for r in results if r['confidence'] < 0.5]
         }
 
-        # Calculate accuracy by confidence level
         bucket_stats = {}
         for bucket_name, bucket_results in confidence_buckets.items():
             if bucket_results:
@@ -248,18 +241,15 @@ def main():
     """
     Test the confidence scoring functionality.
     """
-    # Initialize classifier and confidence scorer
     classifier = LlamaSentimentClassifier()
     scorer = ConfidenceScorer(classifier)
 
-    # Test connection
     if not classifier.test_connection():
         print("❌ Failed to load model. Check setup instructions!")
         return
 
     print("✅ Testing confidence scoring...")
 
-    # Test a few examples
     test_texts = [
         "This is absolutely amazing!",  # Should have high confidence
         "That's so skibidi",  # Should have low confidence

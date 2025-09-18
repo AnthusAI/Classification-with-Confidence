@@ -47,14 +47,12 @@ class TransformerLogprobsClassifier:
             print("Loading model for real logprobs extraction...")
 
             try:
-                # Load with authentication - simple approach
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
                 self.model = AutoModelForCausalLM.from_pretrained(
                     self.model_name,
                     torch_dtype=torch.float16
                 )
 
-                # Use best available device (MPS for Apple Silicon, CUDA for NVIDIA, CPU fallback)
                 if torch.backends.mps.is_available():
                     device = "mps"
                 elif torch.cuda.is_available():
@@ -64,7 +62,6 @@ class TransformerLogprobsClassifier:
 
                 self.model = self.model.to(device)
 
-                # Set pad token
                 if self.tokenizer.pad_token is None:
                     self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -114,30 +111,25 @@ Text: "{text}"<|eot_id|><|start_header_id|>assistant<|end_header_id|>
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
         with torch.no_grad():
-            # Generate with logits output
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=1,  # Only generate classification token
+                max_new_tokens=1,
                 return_dict_in_generate=True,
                 output_scores=True,
                 do_sample=False,  # Deterministic for consistent logprobs
-                temperature=0.0,  # No randomness
+                temperature=0.0,
                 pad_token_id=self.tokenizer.eos_token_id
             )
 
             if outputs.scores:
-                # Get logits for the generated token
-                logits = outputs.scores[0][0]  # First (only) generated token
+                logits = outputs.scores[0][0]
 
-                # Calculate probabilities
                 log_probs = F.log_softmax(logits, dim=-1)
                 probs = F.softmax(logits, dim=-1)
 
-                # Get the generated token
                 generated_token_id = outputs.sequences[0][-1]
                 generated_token = self.tokenizer.decode([generated_token_id]).strip()
 
-                # Sum probabilities for positive and negative classes
                 positive_prob = 0.0
                 negative_prob = 0.0
                 positive_logprob = float('-inf')
@@ -145,11 +137,10 @@ Text: "{text}"<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
                 token_details = {}
 
-                # Check all possible tokens and sum probabilities by class
                 for token_text in (self.positive_tokens + self.negative_tokens):
                     token_ids = self.tokenizer.encode(token_text, add_special_tokens=False)
                     if token_ids:
-                        token_id = token_ids[0]  # Use first subword
+                        token_id = token_ids[0]
                         if token_id < len(probs):
                             prob = probs[token_id].item()
                             logprob = log_probs[token_id].item()
@@ -162,7 +153,6 @@ Text: "{text}"<|eot_id|><|start_header_id|>assistant<|end_header_id|>
                                 negative_prob += prob
                                 negative_logprob = max(negative_logprob, logprob)  # Take max logprob
 
-                # Create final probability distribution
                 sentiment_probs = {
                     'positive': positive_prob,
                     'negative': negative_prob
@@ -172,7 +162,6 @@ Text: "{text}"<|eot_id|><|start_header_id|>assistant<|end_header_id|>
                     'negative': negative_logprob if negative_logprob != float('-inf') else -999.0
                 }
 
-                # Get top 20 most likely tokens
                 top_k = 20
                 top_probs, top_indices = torch.topk(probs, top_k)
 
@@ -184,7 +173,6 @@ Text: "{text}"<|eot_id|><|start_header_id|>assistant<|end_header_id|>
                     all_top_tokens[token] = prob.item()
                     all_top_logprobs[token] = log_probs[idx].item()
 
-                # Determine prediction and confidence
                 predicted_sentiment = max(sentiment_probs, key=sentiment_probs.get)
                 confidence = sentiment_probs[predicted_sentiment]
 
@@ -240,7 +228,6 @@ def demonstrate_real_logprobs():
 
     classifier = TransformerLogprobsClassifier()
 
-    # Test if model is available
     print("🔍 Testing model availability...")
     if not classifier.test_model_availability():
         print("\n💡 To use real logprobs, you need:")
@@ -252,7 +239,6 @@ def demonstrate_real_logprobs():
         demonstrate_simulated_logprobs()
         return
 
-    # Final demonstration set: High confidence vs Low confidence examples
     examples = [
         # HIGH CONFIDENCE EXAMPLES (>99%)
         {
@@ -314,7 +300,7 @@ def demonstrate_real_logprobs():
 
             print(f"🔍 Token Details (Yes/No variations found):")
             if result['token_details']:
-                for token, details in list(result['token_details'].items())[:10]:  # Show first 10
+                for token, details in list(result['token_details'].items())[:10]:
                     class_type = "POS" if token in classifier.positive_tokens else "NEG"
                     print(f"  '{token:<8}' {details['prob']:>8.4f} (logprob: {details['logprob']:>7.3f}) [{class_type}]")
             else:
