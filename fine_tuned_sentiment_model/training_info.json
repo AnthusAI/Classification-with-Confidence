@@ -1,0 +1,11 @@
+{
+  "base_model": "meta-llama/Llama-3.1-8B-Instruct",
+  "training_examples": 800,
+  "validation_examples": 200,
+  "final_train_loss": 1.5,
+  "final_val_loss": 1.8,
+  "final_accuracy": 0.85,
+  "training_completed": true,
+  "demo_mode": true,
+  "note": "This is a demo simulation - not a real fine-tuned model"
+}

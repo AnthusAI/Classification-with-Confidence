@@ -8,3 +8,9 @@ sentencepiece>=0.1.99
 scikit-learn>=1.3.0
 matplotlib>=3.7.0
 numpy>=1.24.0
+
+# Fine-tuning dependencies (optional)
+peft>=0.6.0
+bitsandbytes>=0.41.0
+datasets>=2.14.0
+wandb>=0.15.0

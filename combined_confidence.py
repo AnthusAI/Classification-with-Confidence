@@ -26,17 +26,25 @@ class CombinedConfidenceScorer:
     """
 
     def __init__(self, classifier: LlamaSentimentClassifier,
-                 openai_api_key: Optional[str] = None):
+                 openai_api_key: Optional[str] = None,
+                 fine_tuned_path: Optional[str] = None):
         """
         Initialize the combined confidence scorer.
 
         Args:
             classifier: The base classifier to use
             openai_api_key: Optional OpenAI API key for logprobs
+            fine_tuned_path: Path to fine-tuned model (None for base model)
         """
         self.classifier = classifier
+        self.fine_tuned_path = fine_tuned_path
+        self.is_fine_tuned = fine_tuned_path is not None
+
+        # Initialize scorers with fine-tuned support
         self.consistency_scorer = ConfidenceScorer(classifier)
-        self.logprobs_scorer = TransformerLogprobsClassifier()
+        self.logprobs_scorer = TransformerLogprobsClassifier(
+            fine_tuned_path=fine_tuned_path
+        )
 
     def get_combined_confidence(self, text: str,
                               num_consistency_samples: int = 5,
@@ -208,17 +216,20 @@ def demonstrate_combined_confidence():
     print("🎯 Method 3: Combined Confidence Scoring Demonstration")
     print("=" * 70)
 
-    classifier = LlamaSentimentClassifier()
-    combined_scorer = CombinedConfidenceScorer(classifier)
+    # Check if fine-tuned model is available
+    import os
+    fine_tuned_path = "./fine_tuned_sentiment_model"
+    has_fine_tuned = os.path.exists(fine_tuned_path)
 
-    if not classifier.test_connection():
-        print("❌ Cannot load model. Please ensure:")
-        print("  1. Hugging Face access: huggingface-cli login")
-        print("  2. Model access: https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct")
-        return
-
-    print("✅ Model loaded successfully!")
-    print()
+    if has_fine_tuned:
+        print("🎯 Found fine-tuned model! Comparing base vs fine-tuned...")
+        models_to_test = [
+            ("Base Model", None),
+            ("Fine-Tuned Model", fine_tuned_path)
+        ]
+    else:
+        print("Using base model only (run fine_tune_model.py to create fine-tuned version)")
+        models_to_test = [("Base Model", None)]
 
     examples = [
         "This is absolutely amazing!",  # Expected: High confidence both methods
@@ -227,17 +238,33 @@ def demonstrate_combined_confidence():
         "That's so skibidi!"  # Expected: High confidence (Llama 3.1 knows this)
     ]
 
-    for i, text in enumerate(examples, 1):
-        print(f"📝 Example {i}/{len(examples)}")
-        result = combined_scorer.get_combined_confidence(
-            text,
-            num_consistency_samples=3,  # Fewer samples for demo speed
-            use_openai_logprobs=False
-        )
+    for model_name, fine_tuned_path in models_to_test:
+        print(f"\n🤖 {model_name.upper()} RESULTS:")
+        print("=" * 50)
 
-        calibrated_conf = combined_scorer.calibrate_confidence(result['combined_confidence'])
-        print(f"  📊 Calibrated confidence: {calibrated_conf:.3f}")
+        classifier = LlamaSentimentClassifier()
+        combined_scorer = CombinedConfidenceScorer(classifier, fine_tuned_path=fine_tuned_path)
+
+        if not classifier.test_connection():
+            print("❌ Cannot load model. Please ensure:")
+            print("  1. Hugging Face access: huggingface-cli login")
+            print("  2. Model access: https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct")
+            continue
+
+        print("✅ Model loaded successfully!")
         print()
+
+        for i, text in enumerate(examples, 1):
+            print(f"📝 Example {i}/{len(examples)}: '{text}'")
+            result = combined_scorer.get_combined_confidence(
+                text,
+                num_consistency_samples=3,  # Fewer samples for demo speed
+                use_openai_logprobs=False
+            )
+
+            calibrated_conf = combined_scorer.calibrate_confidence(result['combined_confidence'])
+            print(f"  📊 Calibrated confidence: {calibrated_conf:.3f}")
+            print()
 
     print("💡 Key Insights from Combined Approach:")
     print("• Cross-validation: Use consistency to validate logprobs")

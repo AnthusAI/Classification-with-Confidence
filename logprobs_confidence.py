@@ -24,18 +24,25 @@ warnings.filterwarnings("ignore")
 class TransformerLogprobsClassifier:
     """
     Real token probability extraction using Hugging Face Transformers.
+    Supports both base models and fine-tuned models.
     """
 
-    def __init__(self, model_name: str = "meta-llama/Llama-3.1-8B-Instruct"):
+    def __init__(self,
+                 model_name: str = "meta-llama/Llama-3.1-8B-Instruct",
+                 fine_tuned_path: str = None):
         """
         Initialize the transformer logprobs classifier.
 
         Args:
             model_name: Hugging Face model identifier
+            fine_tuned_path: Path to fine-tuned model (None for base model)
         """
         self.model_name = model_name
+        self.fine_tuned_path = fine_tuned_path
         self.model = None
         self.tokenizer = None
+        self.is_fine_tuned = fine_tuned_path is not None
+
         # Map various token variations to binary classification
         self.positive_tokens = ["yes", "Yes", "YES", "y", "Y", "positive", "Positive", "POSITIVE", "pos", "Pos", "POS", "true", "True", "TRUE", "1"]
         self.negative_tokens = ["no", "No", "NO", "n", "N", "negative", "Negative", "NEGATIVE", "neg", "Neg", "NEG", "false", "False", "FALSE", "0"]
@@ -43,45 +50,98 @@ class TransformerLogprobsClassifier:
     def _load_model(self):
         """Load the Llama model and tokenizer (lazy loading)."""
         if self.model is None:
-            print(f"Loading {self.model_name}...")
-            print("Loading model for real logprobs extraction...")
+            if self.is_fine_tuned:
+                print(f"Loading fine-tuned model from {self.fine_tuned_path}...")
+                return self._load_fine_tuned_model()
+            else:
+                print(f"Loading {self.model_name}...")
+                print("Loading model for real logprobs extraction...")
 
             try:
-                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    self.model_name,
-                    torch_dtype=torch.float16
-                )
-
-                if torch.backends.mps.is_available():
-                    device = "mps"
-                elif torch.cuda.is_available():
-                    device = "cuda"
+                # Load tokenizer
+                if self.is_fine_tuned:
+                    self.tokenizer = AutoTokenizer.from_pretrained(self.fine_tuned_path)
                 else:
-                    device = "cpu"
+                    self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
 
-                self.model = self.model.to(device)
+                # Load model
+                if self.is_fine_tuned:
+                    # Load fine-tuned model
+                    from peft import PeftModel
+                    base_model = AutoModelForCausalLM.from_pretrained(
+                        self.model_name,
+                        torch_dtype=torch.float16,
+                        load_in_8bit=True
+                    )
+                    self.model = PeftModel.from_pretrained(base_model, self.fine_tuned_path)
+                else:
+                    # Load base model
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        self.model_name,
+                        torch_dtype=torch.float16
+                    )
+
+                # Set device
+                if not self.is_fine_tuned:  # Fine-tuned models use device_map="auto"
+                    if torch.backends.mps.is_available():
+                        device = "mps"
+                    elif torch.cuda.is_available():
+                        device = "cuda"
+                    else:
+                        device = "cpu"
+
+                    self.model = self.model.to(device)
 
                 if self.tokenizer.pad_token is None:
                     self.tokenizer.pad_token = self.tokenizer.eos_token
 
                 device = next(self.model.parameters()).device
-                print(f"✅ Model loaded successfully on {device}!")
+                model_type = "fine-tuned" if self.is_fine_tuned else "base"
+                print(f"✅ {model_type.title()} model loaded successfully on {device}!")
 
             except Exception as e:
                 print(f"❌ Failed to load model: {e}")
-                print("Make sure you have:")
-                print("  1. Get HF token: https://huggingface.co/settings/tokens")
-                print("  2. Request Llama access: https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct")
-                print("  3. Set token: export HF_TOKEN=your_token_here")
-                print("  4. Sufficient GPU memory (16GB+ recommended)")
-                print("  5. Required packages installed")
+                if self.is_fine_tuned:
+                    print("Make sure the fine-tuned model exists at the specified path.")
+                    print("Run fine_tune_model.py first to create the fine-tuned model.")
+                else:
+                    print("Make sure you have:")
+                    print("  1. Get HF token: https://huggingface.co/settings/tokens")
+                    print("  2. Request Llama access: https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct")
+                    print("  3. Set token: export HF_TOKEN=your_token_here")
+                    print("  4. Sufficient GPU memory (16GB+ recommended)")
+                    print("  5. Required packages installed")
                 print("\n🔄 Falling back to realistic simulation for demonstration...")
                 return False
 
+    def _load_fine_tuned_model(self):
+        """Load fine-tuned model with error handling."""
+        try:
+            import os
+            if not os.path.exists(self.fine_tuned_path):
+                print(f"❌ Fine-tuned model not found at {self.fine_tuned_path}")
+                return False
+
+            return True  # Success, actual loading happens in _load_model
+
+        except ImportError:
+            print("❌ PEFT library not installed. Install with: pip install peft")
+            return False
+
     def create_classification_prompt(self, text: str) -> str:
         """Create a binary yes/no prompt for positive sentiment detection."""
-        return f"""<|begin_of_text|><|start_header_id|>user<|end_header_id|>
+        if self.is_fine_tuned:
+            # Use the same format as fine-tuning for consistency
+            return f"""<|begin_of_text|><|start_header_id|>user<|end_header_id|>
+
+Classify the sentiment of this text as either 'positive' or 'negative':
+
+"{text}"<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+"""
+        else:
+            # Original format for base model
+            return f"""<|begin_of_text|><|start_header_id|>user<|end_header_id|>
 
 Is this text positive in sentiment? Answer with only "yes" or "no".
 
@@ -137,7 +197,17 @@ Text: "{text}"<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
                 token_details = {}
 
-                for token_text in (self.positive_tokens + self.negative_tokens):
+                # Use different token sets based on model type
+                if self.is_fine_tuned:
+                    # Fine-tuned models output "positive"/"negative" directly
+                    positive_tokens = ["positive", "Positive", "POSITIVE"]
+                    negative_tokens = ["negative", "Negative", "NEGATIVE"]
+                else:
+                    # Base models use yes/no format
+                    positive_tokens = self.positive_tokens
+                    negative_tokens = self.negative_tokens
+
+                for token_text in (positive_tokens + negative_tokens):
                     token_ids = self.tokenizer.encode(token_text, add_special_tokens=False)
                     if token_ids:
                         token_id = token_ids[0]
@@ -146,10 +216,10 @@ Text: "{text}"<|eot_id|><|start_header_id|>assistant<|end_header_id|>
                             logprob = log_probs[token_id].item()
                             token_details[token_text] = {'prob': prob, 'logprob': logprob}
 
-                            if token_text in self.positive_tokens:
+                            if token_text in positive_tokens:
                                 positive_prob += prob
                                 positive_logprob = max(positive_logprob, logprob)  # Take max logprob
-                            elif token_text in self.negative_tokens:
+                            elif token_text in negative_tokens:
                                 negative_prob += prob
                                 negative_logprob = max(negative_logprob, logprob)  # Take max logprob
 
@@ -200,12 +270,22 @@ Text: "{text}"<|eot_id|><|start_header_id|>assistant<|end_header_id|>
         """Classify a generated token into positive/negative/unknown."""
         token_clean = token.strip()
 
-        if token_clean in self.positive_tokens:
-            return 'positive'
-        elif token_clean in self.negative_tokens:
-            return 'negative'
+        if self.is_fine_tuned:
+            # Fine-tuned models output "positive"/"negative" directly
+            if token_clean.lower() in ['positive', 'pos']:
+                return 'positive'
+            elif token_clean.lower() in ['negative', 'neg']:
+                return 'negative'
+            else:
+                return f'unknown_token:{token_clean}'
         else:
-            return f'unknown_token:{token_clean}'
+            # Base models use yes/no format
+            if token_clean in self.positive_tokens:
+                return 'positive'
+            elif token_clean in self.negative_tokens:
+                return 'negative'
+            else:
+                return f'unknown_token:{token_clean}'
 
     def test_model_availability(self) -> bool:
         """Test if the model can be loaded."""
@@ -226,10 +306,33 @@ def demonstrate_real_logprobs():
     print("This shows ACTUAL token probabilities from Hugging Face Transformers")
     print()
 
-    classifier = TransformerLogprobsClassifier()
+    # Test both base and fine-tuned models if available
+    import os
+    fine_tuned_path = "./fine_tuned_sentiment_model"
+    has_fine_tuned = os.path.exists(fine_tuned_path)
 
-    print("🔍 Testing model availability...")
-    if not classifier.test_model_availability():
+    if has_fine_tuned:
+        print("🎯 Found fine-tuned model! Comparing base vs fine-tuned...")
+        classifiers = {
+            'Base Model': TransformerLogprobsClassifier(),
+            'Fine-Tuned Model': TransformerLogprobsClassifier(fine_tuned_path=fine_tuned_path)
+        }
+    else:
+        print("Using base model only (run fine_tune_model.py to create fine-tuned version)")
+        classifiers = {
+            'Base Model': TransformerLogprobsClassifier()
+        }
+
+    # Test model availability
+    available_classifiers = {}
+    for name, classifier in classifiers.items():
+        print(f"🔍 Testing {name} availability...")
+        if classifier.test_model_availability():
+            available_classifiers[name] = classifier
+        else:
+            print(f"❌ {name} not available")
+
+    if not available_classifiers:
         print("\n💡 To use real logprobs, you need:")
         print("  1. GPU with 16GB+ memory")
         print("  2. Hugging Face account: huggingface-cli login")
@@ -282,46 +385,43 @@ def demonstrate_real_logprobs():
         print(f"Text: \"{example['text']}\"")
         print("-" * 60)
 
-        result = classifier.get_real_logprobs_confidence(example['text'])
+        # Test each available model
+        for model_name, classifier in available_classifiers.items():
+            print(f"\n🤖 {model_name.upper()} RESULTS:")
 
-        if 'error' not in result:
-            print(f"🎯 REAL Model Prediction:")
-            print(f"Generated token: '{result['generated_token']}' → {result['generated_classification']}")
-            print(f"Final prediction: {result['prediction']}")
-            print(f"Confidence: {result['confidence']:.4f}")
-            print()
+            result = classifier.get_real_logprobs_confidence(example['text'])
 
-            print(f"📋 REAL Binary Classification Probabilities:")
-            for sentiment, prob in result['sentiment_probabilities'].items():
-                logprob = result['sentiment_logprobs'][sentiment]
-                marker = " ← SELECTED" if sentiment == result['prediction'] else ""
-                print(f"  {sentiment:<10} {prob:>8.4f} (logprob: {logprob:>7.3f}){marker}")
-            print()
+            if 'error' not in result:
+                print(f"🎯 Prediction: {result['prediction']} (confidence: {result['confidence']:.4f})")
+                print(f"Generated token: '{result['generated_token']}' → {result['generated_classification']}")
 
-            print(f"🔍 Token Details (Yes/No variations found):")
-            if result['token_details']:
-                for token, details in list(result['token_details'].items())[:10]:
-                    class_type = "POS" if token in classifier.positive_tokens else "NEG"
-                    print(f"  '{token:<8}' {details['prob']:>8.4f} (logprob: {details['logprob']:>7.3f}) [{class_type}]")
+                print(f"📋 Binary Classification Probabilities:")
+                for sentiment, prob in result['sentiment_probabilities'].items():
+                    logprob = result['sentiment_logprobs'][sentiment]
+                    marker = " ← SELECTED" if sentiment == result['prediction'] else ""
+                    print(f"  {sentiment:<10} {prob:>8.4f} (logprob: {logprob:>7.3f}){marker}")
+
+                if result['token_details']:
+                    print(f"🔍 Top Token Details:")
+                    for token, details in list(result['token_details'].items())[:5]:
+                        if classifier.is_fine_tuned:
+                            class_type = "POS" if token.lower() in ['positive', 'pos'] else "NEG"
+                        else:
+                            class_type = "POS" if token in classifier.positive_tokens else "NEG"
+                        print(f"  '{token:<8}' {details['prob']:>8.4f} (logprob: {details['logprob']:>7.3f}) [{class_type}]")
+
+                # Analysis
+                if result['confidence'] > 0.8:
+                    confidence_level = "HIGH CONFIDENCE ✅"
+                elif result['confidence'] > 0.5:
+                    confidence_level = "MEDIUM CONFIDENCE ⚠️"
+                else:
+                    confidence_level = "LOW CONFIDENCE ❓"
+
+                print(f"📈 {confidence_level}: {result['confidence']:.1%}")
+
             else:
-                print(f"  No exact token matches found")
-            print()
-
-            print(f"📊 Top 5 Most Likely Tokens (from model):")
-            for j, (token, prob) in enumerate(list(result['all_top_tokens'].items())[:5], 1):
-                logprob = result['all_top_logprobs'][token]
-                print(f"  {j}. '{token:<8}' {prob:>8.4f} (logprob: {logprob:>7.3f})")
-
-            # Analysis
-            if result['confidence'] > 0.8:
-                print(f"\n✅ HIGH CONFIDENCE: Model is very certain")
-            elif result['confidence'] > 0.5:
-                print(f"\n⚠️  MEDIUM CONFIDENCE: Model has some uncertainty")
-            else:
-                print(f"\n❓ LOW CONFIDENCE: Model is uncertain")
-
-        else:
-            print(f"❌ Error: {result['error']}")
+                print(f"❌ Error: {result['error']}")
 
         print("=" * 70)
         print()
