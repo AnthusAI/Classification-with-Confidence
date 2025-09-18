@@ -50,20 +50,81 @@ Rank  Token        Probability    Percentage    Log-Prob
 
 4. **This is real confidence data**: Unlike a model just saying "I'm confident," these probabilities reflect the model's actual internal uncertainty.
 
-### From Token Probabilities to Classification Confidence
-
-Since we're doing sentiment classification, we need to aggregate related tokens:
-
+**Aggregating to Final Classification:**
 ```
 SENTIMENT CLASSIFICATION AGGREGATION:
-All "YES" variants (yes, Yes, YES, y, Y):  99.96%
-All "NO" variants (no, No, NO, n, N):       0.04%
+All "YES" variants (Yes, yes, YES, y, Y):     99.96%
+All "NO" variants (No, no, NO, n, N):          0.04%
 
 FINAL PREDICTION: POSITIVE
 CONFIDENCE: 99.96%
 ```
 
-**This 99.96% confidence score is mathematically grounded**—it's the sum of probabilities for all tokens that indicate positive sentiment.
+This 99.96% confidence score is mathematically grounded—it's the sum of probabilities for all tokens that indicate positive sentiment.
+
+### Low Confidence Example: When the Model is Uncertain
+
+Now let's see what happens with genuinely ambiguous text that confuses the model:
+
+```
+INPUT: "Is this text positive in sentiment? Answer yes or no."
+TEXT TO CLASSIFY: "Best worst thing ever"
+```
+
+**When the model generates the first token of its response, here's what it actually computes:**
+
+```
+FIRST TOKEN PROBABILITY DISTRIBUTION:
+Rank  Token        Probability    Percentage    Log-Prob
+-
+ 1.   "Yes     "    0.366000      36.60%      -1.005
+ 2.   "No      "    0.267800      26.78%      -1.318
+ 3.   "no      "    0.208500      20.85%      -1.568
+ 4.   "yes     "    0.155000      15.50%      -1.864
+ 5.   "Maybe   "    0.000600       0.06%      -7.411
+ 6.   "YES     "    0.000100       0.01%      -9.161
+ 7.   "y       "    0.000000       0.00%      -12.857
+ 8.   "Y       "    0.000000       0.00%      -12.685
+```
+
+**The model selected: "Yes" (36.60% probability)**
+
+**Aggregating to Final Classification:**
+```
+SENTIMENT CLASSIFICATION AGGREGATION:
+All "YES" variants (Yes, yes, YES, y, Y):     52.11%
+All "NO" variants (No, no, NO, n, N):         47.64%
+
+FINAL PREDICTION: POSITIVE  
+CONFIDENCE: 52.11%
+```
+
+The model is genuinely uncertain here—52.11% vs 47.64% is almost a coin flip! The contradictory words "Best worst" create real confusion.
+
+### Comparing High vs Low Confidence
+
+**High Confidence Example ("I love this movie!"):**
+- **Winner**: "Yes" with 99.41% probability
+- **Runner-up**: "yes" with only 0.38% probability  
+- **Massive gap**: 99.03 percentage points between winner and runner-up
+- **Log-prob difference**: -0.006 vs -5.568 = 5.562 difference
+
+**Low Confidence Example ("Best worst thing ever"):**
+- **Winner**: "Yes" with 36.60% probability
+- **Runner-up**: "No" with 26.78% probability
+- **Small gap**: Only 9.82 percentage points between winner and runner-up
+- **Log-prob difference**: -1.005 vs -1.318 = 0.313 difference
+
+**Key Insight**: The contradictory words "Best worst" create genuine uncertainty. The model can't decide if the overall sentiment is positive or negative, so probability mass is distributed almost evenly across multiple tokens.
+
+### From Token Probabilities to Classification Confidence
+
+The process is simple: we group all tokens by their semantic meaning and sum their probabilities to get the final classification confidence. As you can see from the examples above:
+
+- **High confidence**: 99.96% vs 0.04% - model is extremely certain
+- **Low confidence**: 52.11% vs 47.64% - model is genuinely uncertain, almost a coin flip
+- **Mathematical grounding**: These confidence scores are the sum of probabilities for all tokens that indicate each sentiment
+- **Real uncertainty detection**: The model's internal probability distribution reveals when it's confused
 
 ### Controlling Token Selection
 
