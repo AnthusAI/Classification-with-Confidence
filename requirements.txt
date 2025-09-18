@@ -1,1 +1,10 @@
 requests>=2.25.0
+torch>=2.0.0
+transformers>=4.35.0
+accelerate>=0.20.0
+sentencepiece>=0.1.99
+
+# Calibration dependencies
+scikit-learn>=1.3.0
+matplotlib>=3.7.0
+numpy>=1.24.0

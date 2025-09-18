@@ -1,28 +1,70 @@
 """
-Sentiment classifier using Ollama for local LLM inference.
+Sentiment classifier using Hugging Face Transformers with Llama 3.1.
 """
-import requests
-import json
+import torch
+import torch.nn.functional as F
+from transformers import AutoTokenizer, AutoModelForCausalLM
 from typing import List, Optional, Dict, Any
 import time
+import warnings
+warnings.filterwarnings("ignore")
 
 
-class OllamaSentimentClassifier:
+class LlamaSentimentClassifier:
     """
-    A sentiment classifier that uses Ollama to run local LLMs.
+    A sentiment classifier that uses Hugging Face Transformers with Llama 3.1.
     """
 
-    def __init__(self, model_name: str = "llama3.2", base_url: str = "http://localhost:11434"):
+    def __init__(self, model_name: str = "meta-llama/Llama-3.1-8B-Instruct"):
         """
         Initialize the classifier.
 
         Args:
-            model_name: Name of the Ollama model to use
-            base_url: Base URL for Ollama API
+            model_name: Hugging Face model identifier for Llama 3.1
         """
         self.model_name = model_name
-        self.base_url = base_url
-        self.api_url = f"{base_url}/api/generate"
+        self.model = None
+        self.tokenizer = None
+        self._load_model()
+
+    def _load_model(self):
+        """Load the Llama model and tokenizer (lazy loading)."""
+        if self.model is None:
+            print(f"Loading {self.model_name}...")
+            print("This may take a few minutes and requires significant memory...")
+
+            try:
+                # Load with authentication
+                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    self.model_name,
+                    torch_dtype=torch.float16
+                )
+
+                # Use best available device (MPS for Apple Silicon, CUDA for NVIDIA, CPU fallback)
+                if torch.backends.mps.is_available():
+                    device = "mps"
+                elif torch.cuda.is_available():
+                    device = "cuda"
+                else:
+                    device = "cpu"
+
+                self.model = self.model.to(device)
+
+                # Set pad token
+                if self.tokenizer.pad_token is None:
+                    self.tokenizer.pad_token = self.tokenizer.eos_token
+
+                device = next(self.model.parameters()).device
+                print(f"✅ Model loaded successfully on {device}!")
+
+            except Exception as e:
+                print(f"❌ Failed to load model: {e}")
+                print("Make sure you have:")
+                print("  1. Hugging Face token: huggingface-cli login")
+                print("  2. Model access: https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct")
+                print("  3. Required packages: pip install torch transformers accelerate")
+                raise
 
     def _create_prompt(self, text: str, few_shot_examples: Optional[List[Dict[str, str]]] = None) -> str:
         """
@@ -33,32 +75,30 @@ class OllamaSentimentClassifier:
             few_shot_examples: Optional list of example classifications
 
         Returns:
-            Formatted prompt string
+            Formatted prompt string using Llama 3.1 chat format
         """
-        prompt_parts = [
-            "You are a sentiment classifier. Classify the sentiment of the given text as either 'positive', 'negative', or 'neutral'.",
-            "Respond with only one word: positive, negative, or neutral.",
-            ""
-        ]
+        # Build the system message
+        system_msg = "You are a sentiment classifier. Classify the sentiment of the given text as either 'positive', 'negative', or 'neutral'. Respond with only one word."
 
-        # Add few-shot examples if provided
+        # Add few-shot examples to system message if provided
         if few_shot_examples:
-            prompt_parts.append("Examples:")
+            system_msg += "\n\nExamples:"
             for example in few_shot_examples:
-                prompt_parts.append(f"Text: {example['text']}")
-                prompt_parts.append(f"Sentiment: {example['sentiment']}")
-                prompt_parts.append("")
+                system_msg += f"\nText: {example['text']}\nSentiment: {example['sentiment']}"
 
-        prompt_parts.extend([
-            f"Text: {text}",
-            "Sentiment:"
-        ])
+        # Create the Llama 3.1 chat format
+        prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
-        return "\n".join(prompt_parts)
+{system_msg}<|eot_id|><|start_header_id|>user<|end_header_id|>
 
-    def _call_ollama(self, prompt: str, temperature: float = 0.1) -> Optional[str]:
+Text: {text}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+"""
+        return prompt
+
+    def _generate_response(self, prompt: str, temperature: float = 0.8) -> Optional[str]:
         """
-        Make a request to Ollama API.
+        Generate response using the Hugging Face model.
 
         Args:
             prompt: The prompt to send to the model
@@ -68,28 +108,30 @@ class OllamaSentimentClassifier:
             Generated response text or None if failed
         """
         try:
-            payload = {
-                "model": self.model_name,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": temperature,
-                    "top_p": 0.9,
-                    "max_tokens": 10  # We only need one word
-                }
-            }
+            # Tokenize input
+            inputs = self.tokenizer(prompt, return_tensors="pt")
 
-            response = requests.post(self.api_url, json=payload, timeout=30)
-            response.raise_for_status()
+            # Move inputs to same device as model
+            device = next(self.model.parameters()).device
+            inputs = {k: v.to(device) for k, v in inputs.items()}
 
-            result = response.json()
-            return result.get("response", "").strip().lower()
+            # Generate response
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=10,  # We only need one word
+                    do_sample=temperature > 0,
+                    temperature=temperature if temperature > 0 else None,
+                    top_p=0.9,
+                    pad_token_id=self.tokenizer.eos_token_id
+                )
 
-        except requests.exceptions.RequestException as e:
-            print(f"Error calling Ollama API: {e}")
-            return None
-        except json.JSONDecodeError as e:
-            print(f"Error parsing Ollama response: {e}")
+            # Decode response
+            response = self.tokenizer.decode(outputs[0][len(inputs['input_ids'][0]):], skip_special_tokens=True)
+            return response.strip().lower()
+
+        except Exception as e:
+            print(f"Error generating response: {e}")
             return None
 
     def _normalize_response(self, response: str) -> Optional[str]:
@@ -135,7 +177,7 @@ class OllamaSentimentClassifier:
             Sentiment classification ('positive', 'negative', 'neutral') or None if failed
         """
         prompt = self._create_prompt(text, few_shot_examples)
-        response = self._call_ollama(prompt)
+        response = self._generate_response(prompt)
         return self._normalize_response(response)
 
     def classify_with_retries(self, text: str, retries: int = 3,
@@ -163,10 +205,10 @@ class OllamaSentimentClassifier:
 
     def test_connection(self) -> bool:
         """
-        Test if Ollama is running and the model is available.
+        Test if the model is loaded and working.
 
         Returns:
-            True if connection successful, False otherwise
+            True if model works, False otherwise
         """
         try:
             # Try a simple classification
@@ -181,23 +223,22 @@ def main():
     """
     Simple test of the classifier.
     """
-    classifier = OllamaSentimentClassifier()
+    classifier = LlamaSentimentClassifier()
 
     # Test connection
-    print("Testing Ollama connection...")
+    print("Testing model...")
     if not classifier.test_connection():
-        print("❌ Failed to connect to Ollama. Make sure Ollama is running and the model is available.")
-        print("Try running: ollama pull llama3.2")
+        print("❌ Failed to load model. Check setup instructions.")
         return
 
-    print("✅ Connected to Ollama successfully!")
+    print("✅ Model working successfully!")
 
     # Test basic classification
     test_texts = [
         "I love this!",
         "This is terrible.",
         "It's okay, I guess.",
-        "That's so skibidi",  # Gen Z slang - should be uncertain
+        "Best worst thing ever",  # Contradictory - should be uncertain
     ]
 
     print("\nTesting basic classifications:")

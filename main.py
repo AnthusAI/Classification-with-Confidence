@@ -8,10 +8,10 @@ confidence scores through response consistency analysis.
 import sys
 import time
 from typing import Dict, Any
-from classifier import OllamaSentimentClassifier
-from confidence import ConfidenceScorer
-from fine_tuning import FewShotLearning
-from datasets import get_test_sets, get_few_shot_examples, print_dataset_summary
+from classifier import LlamaSentimentClassifier
+from consistency_confidence import ConfidenceScorer
+# Fine-tuning removed - was untested dead code
+from datasets import get_test_sets, print_dataset_summary
 
 
 def print_header(title: str, char: str = "="):
@@ -28,9 +28,9 @@ def print_section(title: str):
     print(f"{'-' * 40}")
 
 
-def test_connection(classifier: OllamaSentimentClassifier) -> bool:
+def test_connection(classifier: LlamaSentimentClassifier) -> bool:
     """
-    Test the connection to Ollama and provide helpful error messages.
+    Test the model loading and provide helpful error messages.
 
     Args:
         classifier: The classifier to test
@@ -38,32 +38,31 @@ def test_connection(classifier: OllamaSentimentClassifier) -> bool:
     Returns:
         True if connection successful, False otherwise
     """
-    print_section("Testing Ollama Connection")
+    print_section("Testing Model Loading")
 
-    print("Checking if Ollama is running and model is available...")
+    print("Loading Hugging Face Transformers model...")
 
     if classifier.test_connection():
-        print("✅ Successfully connected to Ollama!")
+        print("✅ Successfully loaded model!")
         print(f"   Model: {classifier.model_name}")
         print(f"   API URL: {classifier.api_url}")
         return True
     else:
-        print("❌ Failed to connect to Ollama.")
+        print("❌ Failed to load model.")
         print("\nTroubleshooting steps:")
-        print("1. Make sure Ollama is installed and running:")
-        print("   curl -fsSL https://ollama.ai/install.sh | sh")
-        print("   ollama serve")
+        print("1. Make sure you have Hugging Face access:")
+        print("   huggingface-cli login")
         print()
         print("2. Make sure the model is available:")
-        print(f"   ollama pull {classifier.model_name}")
+        print("   Request access: https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct")
         print()
-        print("3. Check if Ollama is running on the correct port:")
-        print("   ollama list")
+        print("3. Install required packages:")
+        print("   pip install torch transformers accelerate")
         print("   curl http://localhost:11434/api/tags")
         return False
 
 
-def demonstrate_basic_classification(classifier: OllamaSentimentClassifier):
+def demonstrate_basic_classification(classifier: LlamaSentimentClassifier):
     """
     Demonstrate basic classification without confidence scoring.
 
@@ -137,66 +136,7 @@ def demonstrate_confidence_scoring(scorer: ConfidenceScorer):
         print()
 
 
-def demonstrate_few_shot_improvement(few_shot_learner: FewShotLearning):
-    """
-    Demonstrate how few-shot learning improves confidence on slang.
-
-    Args:
-        few_shot_learner: The few-shot learning system
-    """
-    print_section("Few-Shot Learning Improvement Demo")
-
-    print("This demonstrates how providing examples of Gen Z slang can improve")
-    print("the model's confidence when classifying similar unfamiliar terms.")
-    print()
-
-    # Focus on Gen Z examples that should benefit from few-shot learning
-    from datasets import get_examples_by_category
-
-    test_examples = [
-        {"text": "That's so skibidi", "expected": "positive", "category": "gen_z_positive"},
-        {"text": "This is mid, not gonna lie", "expected": "negative", "category": "gen_z_negative"},
-        {"text": "You're literally sigma energy", "expected": "positive", "category": "gen_z_positive"},
-    ]
-
-    few_shot_examples = get_few_shot_examples()[:5]  # Use first 5 examples
-
-    print("Few-shot examples we'll provide to the model:")
-    for ex in few_shot_examples:
-        print(f"  '{ex['text']}' → {ex['sentiment']}")
-    print()
-
-    # Test each example before and after few-shot learning
-    for example in test_examples:
-        text = example["text"]
-        print(f"Testing: '{text}'")
-
-        # Before few-shot learning
-        before = few_shot_learner.confidence_scorer.classify_with_confidence(
-            text, num_samples=3
-        )
-
-        # After few-shot learning
-        after = few_shot_learner.confidence_scorer.classify_with_confidence(
-            text, num_samples=3, few_shot_examples=few_shot_examples
-        )
-
-        if before["prediction"] and after["prediction"]:
-            improvement = after["confidence"] - before["confidence"]
-            print(f"  Before: {before['prediction']} (confidence: {before['confidence']:.2f})")
-            print(f"  After:  {after['prediction']} (confidence: {after['confidence']:.2f})")
-            print(f"  Improvement: {improvement:+.2f}")
-
-            if improvement > 0.1:
-                print("  ✅ Significant confidence improvement!")
-            elif improvement > 0:
-                print("  📈 Modest confidence improvement")
-            else:
-                print("  📉 No improvement (this can happen)")
-        else:
-            print("  ❌ Failed to get predictions")
-
-        print()
+# Few-shot learning removed - YAGNI for core confidence estimation
 
 
 def run_comprehensive_evaluation(scorer: ConfidenceScorer):
@@ -267,17 +207,15 @@ def main():
     print()
     print("We'll test the hypothesis that models show:")
     print("• HIGH confidence on familiar language (standard English)")
-    print("• LOW confidence on unfamiliar language (Gen Z slang)")
-    print("• IMPROVED confidence after few-shot learning")
+    print("• LOW confidence on unfamiliar/ambiguous language")
 
     # Initialize components
-    classifier = OllamaSentimentClassifier()
+    classifier = LlamaSentimentClassifier()
     scorer = ConfidenceScorer(classifier)
-    few_shot_learner = FewShotLearning(classifier)
 
     # Test connection first
     if not test_connection(classifier):
-        print("\n🛑 Cannot proceed without Ollama connection.")
+        print("\n🛑 Cannot proceed without model loading.")
         print("Please follow the troubleshooting steps above and try again.")
         sys.exit(1)
 
@@ -289,7 +227,6 @@ def main():
     try:
         demonstrate_basic_classification(classifier)
         demonstrate_confidence_scoring(scorer)
-        demonstrate_few_shot_improvement(few_shot_learner)
         run_comprehensive_evaluation(scorer)
 
         print_header("🎉 Demonstration Complete!", "=")
@@ -300,7 +237,7 @@ def main():
         print("• This approach works with any text generation model")
         print()
         print("Next steps you could try:")
-        print("• Test with different Ollama models (ollama pull <model>)")
+        print("• Test with different Hugging Face models")
         print("• Add your own test examples to datasets.py")
         print("• Experiment with different confidence thresholds")
         print("• Try other classification tasks beyond sentiment")
@@ -311,7 +248,7 @@ def main():
     except Exception as e:
         print(f"\n❌ Error during demonstration: {e}")
         print("This might be due to:")
-        print("• Ollama connection issues")
+        print("• Hugging Face model loading issues")
         print("• Model not responding consistently")
         print("• Network timeout")
         print("\nTry running individual components to debug:")

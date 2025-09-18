@@ -5,7 +5,7 @@ import time
 from typing import List, Dict, Optional, Tuple, Any
 from collections import Counter
 import statistics
-from classifier import OllamaSentimentClassifier
+from classifier import LlamaSentimentClassifier
 
 
 class ConfidenceScorer:
@@ -13,7 +13,7 @@ class ConfidenceScorer:
     Measures classification confidence through response consistency.
     """
 
-    def __init__(self, classifier: OllamaSentimentClassifier):
+    def __init__(self, classifier: LlamaSentimentClassifier):
         """
         Initialize the confidence scorer.
 
@@ -249,12 +249,12 @@ def main():
     Test the confidence scoring functionality.
     """
     # Initialize classifier and confidence scorer
-    classifier = OllamaSentimentClassifier()
+    classifier = LlamaSentimentClassifier()
     scorer = ConfidenceScorer(classifier)
 
     # Test connection
     if not classifier.test_connection():
-        print("❌ Failed to connect to Ollama. Make sure it's running!")
+        print("❌ Failed to load model. Check setup instructions!")
         return
 
     print("✅ Testing confidence scoring...")

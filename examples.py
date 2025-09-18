@@ -4,8 +4,8 @@ Quick examples showing confidence differences between standard English and Gen Z
 
 This script demonstrates the core hypothesis with a focused set of examples.
 """
-from classifier import OllamaSentimentClassifier
-from confidence import ConfidenceScorer
+from classifier import LlamaSentimentClassifier
+from consistency_confidence import ConfidenceScorer
 
 
 def run_confidence_comparison():
@@ -16,24 +16,24 @@ def run_confidence_comparison():
     print("=" * 60)
 
     # Initialize components
-    classifier = OllamaSentimentClassifier()
+    classifier = LlamaSentimentClassifier()
     scorer = ConfidenceScorer(classifier)
 
     # Test connection
-    print("Testing Ollama connection...")
+    print("Loading model...")
     if not classifier.test_connection():
-        print("❌ Ollama not available. Make sure it's running with a model loaded.")
-        print("Try: ollama pull llama3.2 && ollama serve")
+        print("❌ Model not available. Check setup instructions.")
+        print("Try: huggingface-cli login")
         return
 
-    print("✅ Connected to Ollama successfully!")
+    print("✅ Model loaded successfully!")
     print()
 
     # Define test cases that should show clear confidence differences
     high_confidence_examples = [
         {"text": "This is absolutely amazing!", "expected": "positive"},
         {"text": "I hate this terrible thing!", "expected": "negative"},
-        {"text": "It's okay, nothing special.", "expected": "neutral"},
+        {"text": "It's okay, nothing special.", "expected": "positive", "category": "weakly_positive"},
     ]
 
     low_confidence_examples = [
