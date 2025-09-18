@@ -132,19 +132,9 @@ def create_combined_reliability_chart():
     fig.suptitle('Business Decision Reliability: Progressive Improvement with More Data', 
                  fontsize=16, fontweight='bold')
     
-    # Add explanation
-    explanation_text = (
-        "Progressive Improvements: 100→200→500→1000 samples\n"
-        "• Green line (calibrated) becomes increasingly reliable for business decisions\n"
-        "• Red line (raw) shows decreasing variation and more stable patterns\n"
-        "• 1000 samples: Excellent statistical significance, very smooth calibration curves"
-    )
-    
-    fig.text(0.5, 0.02, explanation_text, ha='center', fontsize=12,
-             bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.9))
-    
+    # Clean chart without text box - explanation goes in README
     plt.tight_layout()
-    plt.subplots_adjust(top=0.90, bottom=0.15)
+    plt.subplots_adjust(top=0.90)
     plt.savefig("images/calibration/business_reliability_progression.png", dpi=300, bbox_inches='tight')
     print("💾 Combined reliability progression chart saved")
     plt.close()

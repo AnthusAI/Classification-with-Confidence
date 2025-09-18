@@ -568,6 +568,12 @@ We have different algorithms to fix poorly calibrated confidence scores. Each wo
 
 **How It Works**: Uses logistic regression to learn a sigmoid-shaped mapping from raw confidence to calibrated confidence.
 
+**Key Characteristics:**
+- **Parametric method**: Assumes the calibration mapping follows a sigmoid (S-curve) shape
+- **Good for smaller datasets**: Works well even with limited training data
+- **Moderate improvement**: Provides solid calibration gains, though not always perfect
+- **Fast and simple**: Quick to train and apply, making it practical for production use
+
 **Results**:
 - **ECE improved**: 0.151 → 0.040 (much better!)
 - **Red dots closer to diagonal**: Better calibration across most confidence ranges
@@ -578,6 +584,12 @@ We have different algorithms to fix poorly calibrated confidence scores. Each wo
 ![Isotonic Regression Results](images/calibration/reliability_isotonic_regression.png)
 
 **How It Works**: Learns a flexible, monotonic (always increasing) mapping without assuming any specific shape.
+
+**Key Characteristics:**
+- **Non-parametric method**: Makes no assumptions about the calibration curve shape
+- **Learns monotonic mapping**: Ensures that higher confidence always means higher accuracy
+- **Best for larger datasets**: Needs more data to learn the flexible mapping effectively
+- **Excellent calibration**: Often achieves near-perfect calibration (ECE ≈ 0.000)
 
 **Results**:
 - **ECE = 0.000**: Perfect calibration! 
@@ -606,6 +618,12 @@ The bin-based reliability diagrams show the overall calibration quality, but for
 More training data leads to better calibration. Here's how the business reliability charts improve with more labeled examples:
 
 ![Business Reliability Progression](images/calibration/business_reliability_progression.png)
+
+**What This Shows**: As we increase from 100→200→500→1000 samples, the calibration quality dramatically improves:
+
+- **Green line (calibrated)** becomes increasingly reliable for business decisions
+- **Red line (raw)** shows decreasing variation and more stable patterns  
+- **1000 samples**: Excellent statistical significance with very smooth calibration curves
 
 **Progressive Improvements with More Data**:
 

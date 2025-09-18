@@ -148,29 +148,11 @@ def create_calibration_method_comparison():
             # Clean chart without text box - explanation goes in README
             plt.tight_layout()
         elif method_name == "Platt Scaling":
-            interpretation = (
-                "🔧 Platt Scaling Results:\n"
-                "• Uses logistic regression to calibrate\n"
-                "• Parametric method (assumes sigmoid shape)\n"
-                "• Good for smaller datasets\n"
-                "• Moderate improvement in calibration"
-            )
-            fig.text(0.5, 0.02, interpretation, ha='center', fontsize=10,
-                     bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.9))
+            # Clean chart without text box - explanation goes in README
             plt.tight_layout()
-            plt.subplots_adjust(bottom=0.15)
         else:  # Isotonic
-            interpretation = (
-                "🎯 Isotonic Regression Results:\n"
-                "• Non-parametric (no shape assumptions)\n"
-                "• Learns monotonic mapping\n"
-                "• Best for larger datasets\n"
-                "• Excellent calibration (ECE ≈ 0.000)"
-            )
-            fig.text(0.5, 0.02, interpretation, ha='center', fontsize=10,
-                     bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.9))
+            # Clean chart without text box - explanation goes in README
             plt.tight_layout()
-            plt.subplots_adjust(bottom=0.15)
         
         # Save individual chart
         filename = f"images/calibration/reliability_{method_name.lower().replace(' ', '_')}.png"
