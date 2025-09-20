@@ -52,7 +52,7 @@ Let's say we want to classify the sentiment of "I love this movie!" Instead of a
 ```
 INPUT PROMPT: "Is this text positive in sentiment? Answer yes or no.
 
-Text: I love this movie!"
+Text: "I love this movie!"
 ```
 
 Now the model has to predict what comes next. Just like with "Knock knock" → "Who", Llama will predict the most likely response. Let's see what actually happens when we run this prompt through Llama:
