@@ -142,5 +142,20 @@ dmypy.json
 *.safetensors
 models/
 
+# Fine-tuned models and training artifacts
+fine_tuned_sentiment_model/
+checkpoints/
+runs/
+
+# ML experiment tracking
+mlruns/
+wandb/
+.wandb/
+lightning_logs/
+
+# Hugging Face cache
+.cache/
+transformers_cache/
+
 # Generated images (optional - you might want to track these)
 # images/

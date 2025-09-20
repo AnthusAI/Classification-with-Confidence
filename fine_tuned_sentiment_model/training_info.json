@@ -1,11 +1,9 @@
 {
   "base_model": "meta-llama/Llama-3.1-8B-Instruct",
-  "training_examples": 800,
-  "validation_examples": 200,
-  "final_train_loss": 1.5,
-  "final_val_loss": 1.8,
-  "final_accuracy": 0.85,
-  "training_completed": true,
-  "demo_mode": true,
-  "note": "This is a demo simulation - not a real fine-tuned model"
+  "training_examples": 8000,
+  "validation_examples": 2000,
+  "final_train_loss": 1.5658243465423585,
+  "best_eval_loss": 0.8509537577629089,
+  "total_training_steps": 200,
+  "training_completed": true
 }

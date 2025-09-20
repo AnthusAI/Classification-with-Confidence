@@ -13,12 +13,19 @@ Requirements:
     - Access to Llama models (huggingface-cli login required)
     - GPU with sufficient memory (16GB+ recommended for 8B model)
 """
+import os
 import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from typing import Dict, List, Optional, Any
+
+# Suppress transformers warnings about generation parameters
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 import warnings
 warnings.filterwarnings("ignore")
+
+# Suppress transformers generation warnings
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 
 
 class TransformerLogprobsClassifier:
@@ -52,7 +59,6 @@ class TransformerLogprobsClassifier:
         if self.model is None:
             if self.is_fine_tuned:
                 print(f"Loading fine-tuned model from {self.fine_tuned_path}...")
-                return self._load_fine_tuned_model()
             else:
                 print(f"Loading {self.model_name}...")
                 print("Loading model for real logprobs extraction...")
@@ -65,31 +71,32 @@ class TransformerLogprobsClassifier:
                     self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
 
                 # Load model
+                # Determine best device first
+                if torch.backends.mps.is_available():
+                    device = "mps"
+                elif torch.cuda.is_available():
+                    device = "cuda"
+                else:
+                    device = "cpu"
+
                 if self.is_fine_tuned:
-                    # Load fine-tuned model
+                    # Load fine-tuned model - NO 8-bit quantization on MPS
                     from peft import PeftModel
                     base_model = AutoModelForCausalLM.from_pretrained(
                         self.model_name,
                         torch_dtype=torch.float16,
-                        load_in_8bit=True
+                        # load_in_8bit=True  # REMOVED - incompatible with MPS
                     )
                     self.model = PeftModel.from_pretrained(base_model, self.fine_tuned_path)
+                    # Move fine-tuned model to device
+                    self.model = self.model.to(device)
                 else:
                     # Load base model
                     self.model = AutoModelForCausalLM.from_pretrained(
                         self.model_name,
                         torch_dtype=torch.float16
                     )
-
-                # Set device
-                if not self.is_fine_tuned:  # Fine-tuned models use device_map="auto"
-                    if torch.backends.mps.is_available():
-                        device = "mps"
-                    elif torch.cuda.is_available():
-                        device = "cuda"
-                    else:
-                        device = "cpu"
-
+                    # Move base model to device
                     self.model = self.model.to(device)
 
                 if self.tokenizer.pad_token is None:
@@ -101,6 +108,9 @@ class TransformerLogprobsClassifier:
 
             except Exception as e:
                 print(f"❌ Failed to load model: {e}")
+                import traceback
+                print("🔍 Full traceback:")
+                traceback.print_exc()
                 if self.is_fine_tuned:
                     print("Make sure the fine-tuned model exists at the specified path.")
                     print("Run fine_tune_model.py first to create the fine-tuned model.")
@@ -176,8 +186,9 @@ Text: "{text}"<|eot_id|><|start_header_id|>assistant<|end_header_id|>
                 max_new_tokens=1,
                 return_dict_in_generate=True,
                 output_scores=True,
-                do_sample=False,  # Deterministic for consistent logprobs
-                temperature=0.0,
+                do_sample=False,  # Deterministic - override model's default do_sample=True
+                temperature=None,  # Explicitly unset temperature (override model default)
+                top_p=None,      # Explicitly unset top_p (override model default)
                 pad_token_id=self.tokenizer.eos_token_id
             )
 

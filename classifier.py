@@ -91,7 +91,7 @@ Text: {text}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 """
         return prompt
 
-    def _generate_response(self, prompt: str, temperature: float = 0.8) -> Optional[str]:
+    def _generate_response(self, prompt: str, temperature: float = 0.0) -> Optional[str]:
         """
         Generate response using the Hugging Face model.
 
@@ -111,14 +111,24 @@ Text: {text}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
             inputs = {k: v.to(device) for k, v in inputs.items()}
 
             with torch.no_grad():
-                outputs = self.model.generate(
-                    **inputs,
-                    max_new_tokens=10,
-                    do_sample=temperature > 0,
-                    temperature=temperature if temperature > 0 else None,
-                    top_p=0.9,
-                    pad_token_id=self.tokenizer.eos_token_id
-                )
+                if temperature > 0:
+                    # Sampling mode with temperature
+                    outputs = self.model.generate(
+                        **inputs,
+                        max_new_tokens=10,
+                        do_sample=True,
+                        temperature=temperature,
+                        top_p=0.9,
+                        pad_token_id=self.tokenizer.eos_token_id
+                    )
+                else:
+                    # Deterministic mode (no temperature parameters)
+                    outputs = self.model.generate(
+                        **inputs,
+                        max_new_tokens=10,
+                        do_sample=False,  # Deterministic - no temperature needed
+                        pad_token_id=self.tokenizer.eos_token_id
+                    )
 
             # Decode response
             response = self.tokenizer.decode(outputs[0][len(inputs['input_ids'][0]):], skip_special_tokens=True)

@@ -43,11 +43,11 @@ def main():
     print("🚀 Starting main demo with REAL DATASET...")
     
     # Load real dataset
-    from datasets import get_test_sets
+    from dataset_loader import DatasetLoader
     
     print("📊 Loading real labeled dataset...")
-    test_sets = get_test_sets()
-    all_examples = test_sets['all']
+    loader = DatasetLoader()
+    all_examples = loader.load_all()
     
     print(f"📈 Found {len(all_examples)} total labeled samples!")
     print(f"🎯 Using ALL {len(all_examples)} samples for robust calibration...")
@@ -76,26 +76,26 @@ def main():
         # Create realistic OVERCONFIDENT model behavior based on NEW category names
         # The key insight: confidence and accuracy should be correlated, but confidence should be systematically higher
         
-        if category in ['strongly_positive', 'strongly_negative']:
+        if category in ['strong_positive', 'strong_negative']:
             # Very clear cases: very high confidence, very high accuracy, but still overconfident
             true_difficulty = np.random.beta(1, 9)  # Very easy (very low difficulty)
             confidence = 0.85 + 0.14 * (1 - true_difficulty)  # 85-99% confidence
             # High accuracy but still overconfident
             accuracy_prob = confidence - 0.05 - 0.05 * np.random.random()  # 5-10% overconfident
             
-        elif category in ['mildly_positive', 'mildly_negative']:
+        elif category in ['medium_positive', 'medium_negative']:
             # Clear cases: high confidence, high accuracy, moderately overconfident
             true_difficulty = np.random.beta(2, 6)  # Easy (low difficulty)
             confidence = 0.75 + 0.20 * (1 - true_difficulty)  # 75-95% confidence
             accuracy_prob = confidence - 0.08 - 0.07 * np.random.random()  # 8-15% overconfident
             
-        elif category in ['weakly_positive', 'weakly_negative']:
+        elif category in ['weak_positive', 'weak_negative']:
             # Weak signal: medium confidence, medium accuracy, more overconfident
             true_difficulty = np.random.beta(3, 3)  # Medium difficulty
             confidence = 0.55 + 0.25 * (1 - true_difficulty)  # 55-80% confidence
             accuracy_prob = confidence - 0.12 - 0.13 * np.random.random()  # 12-25% overconfident
             
-        elif category in ['ambiguous_positive', 'ambiguous_negative']:
+        elif category in ['neutral_positive', 'neutral_negative']:
             # Very ambiguous: low confidence, low accuracy, very overconfident
             true_difficulty = np.random.beta(5, 2)  # Hard (high difficulty)
             confidence = 0.45 + 0.25 * (1 - true_difficulty)  # 45-70% confidence

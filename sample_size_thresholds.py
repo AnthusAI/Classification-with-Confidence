@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 plt.ioff()
 
 import numpy as np
-from datasets import get_test_sets
+from dataset_loader import DatasetLoader
 from calibration import IsotonicRegressionCalibrator
 from calibration_metrics import calibration_metrics
 
@@ -25,8 +25,9 @@ def create_sample_size_visualization():
     print("📊 Creating Sample Size at Thresholds visualization...")
     
     # Load real data and simulate confidence patterns (same as calibration_demo.py)
-    test_sets = get_test_sets()
-    all_examples = test_sets['all']
+    from dataset_loader import DatasetLoader
+    loader = DatasetLoader()
+    all_examples = loader.load_all()
     
     np.random.seed(42)  # Same seed for consistency
     
@@ -36,27 +37,23 @@ def create_sample_size_visualization():
     for example in all_examples:
         category = example.get('category', 'unknown')
         
-        # Same simulation logic as calibration_demo.py
-        if category in ['strongly_positive', 'strongly_negative']:
+        # Same simulation logic as calibration_demo.py with updated category names
+        if category in ['strong_positive', 'strong_negative']:
             true_difficulty = np.random.beta(1, 9)
             confidence = 0.85 + 0.14 * (1 - true_difficulty)
             accuracy_prob = confidence - 0.05 - 0.05 * np.random.random()
-        elif category in ['mildly_positive', 'mildly_negative']:
+        elif category in ['medium_positive', 'medium_negative']:
             true_difficulty = np.random.beta(2, 6)
             confidence = 0.75 + 0.20 * (1 - true_difficulty)
             accuracy_prob = confidence - 0.08 - 0.07 * np.random.random()
-        elif category in ['weakly_positive', 'weakly_negative']:
+        elif category in ['weak_positive', 'weak_negative']:
             true_difficulty = np.random.beta(3, 3)
             confidence = 0.55 + 0.25 * (1 - true_difficulty)
             accuracy_prob = confidence - 0.12 - 0.13 * np.random.random()
-        elif category in ['ambiguous_positive', 'ambiguous_negative']:
+        elif category in ['neutral_positive', 'neutral_negative']:
             true_difficulty = np.random.beta(5, 2)
             confidence = 0.45 + 0.25 * (1 - true_difficulty)
             accuracy_prob = confidence - 0.20 - 0.15 * np.random.random()
-        elif category == 'sarcastic':
-            true_difficulty = np.random.beta(4, 3)
-            confidence = 0.50 + 0.25 * (1 - true_difficulty)
-            accuracy_prob = confidence - 0.15 - 0.10 * np.random.random()
         else:
             true_difficulty = np.random.beta(3, 3)
             confidence = 0.55 + 0.30 * (1 - true_difficulty)

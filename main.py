@@ -10,21 +10,21 @@ import time
 from typing import Dict, Any
 from classifier import LlamaSentimentClassifier
 from consistency_confidence import ConfidenceScorer
-from datasets import get_test_sets, print_dataset_summary
+from dataset_loader import DatasetLoader
 
 
-def print_header(title: str, char: str = "="):
+def print_header(title: str, char: str = "=", width: int = 60):
     """Print a formatted header."""
-    print(f"\n{char * 60}")
+    print(f"\n{char * width}")
     print(f" {title}")
-    print(f"{char * 60}")
+    print(f"{char * width}")
 
 
-def print_section(title: str):
+def print_section(title: str, width: int = 50):
     """Print a formatted section header."""
-    print(f"\n{'-' * 40}")
+    print(f"\n{'-' * width}")
     print(f" {title}")
-    print(f"{'-' * 40}")
+    print(f"{'-' * width}")
 
 
 def test_connection(classifier: LlamaSentimentClassifier) -> bool:
@@ -44,7 +44,7 @@ def test_connection(classifier: LlamaSentimentClassifier) -> bool:
     if classifier.test_connection():
         print("✅ Successfully loaded model!")
         print(f"   Model: {classifier.model_name}")
-        print(f"   API URL: {classifier.api_url}")
+        print(f"   Device: {next(classifier.model.parameters()).device}")
         return True
     else:
         print("❌ Failed to load model.")
@@ -144,7 +144,18 @@ def run_comprehensive_evaluation(scorer: ConfidenceScorer):
     """
     print_section("Comprehensive Evaluation")
 
-    test_sets = get_test_sets()
+    # Load dataset using new loader
+    loader = DatasetLoader()
+    all_examples = loader.load_all()
+    
+    # Convert to expected format
+    examples = []
+    for item in all_examples:
+        examples.append({
+            'text': item['text'],
+            'expected': item['expected'],
+            'category': item.get('category', 'unknown')
+        })
 
     print("Running systematic evaluation across all test categories...")
     print("This will take a few minutes as we test multiple samples per example.")

@@ -25,7 +25,7 @@ def simulate_fine_tuning():
 
     # Simulate dataset preparation
     print("📊 Loading dataset...")
-    from sentiment_datasets import get_test_sets
+    from dataset_loader import DatasetLoader
 
     examples = get_test_sets()['all']
     print(f"✅ Found {len(examples)} examples")

@@ -145,7 +145,8 @@ def calibration_metrics(confidences: np.ndarray, accuracies: np.ndarray,
 def plot_reliability_diagram(confidences: np.ndarray, accuracies: np.ndarray, 
                            n_bins: int = 10, title: str = "Reliability Diagram",
                            save_path: Optional[str] = None, show: bool = False,
-                           method_name: str = "", sample_size: Optional[int] = None) -> plt.Figure:
+                           method_name: str = "", sample_size: Optional[int] = None,
+                           ax: Optional[plt.Axes] = None, show_ece: bool = False) -> plt.Figure:
     """
     Plot reliability diagram showing calibration quality.
     
@@ -179,10 +180,66 @@ def plot_reliability_diagram(confidences: np.ndarray, accuracies: np.ndarray,
             bin_counts.append(in_bin.sum())
     
     # Create the plot with better styling
-    fig, ax = plt.subplots(figsize=(10, 8))
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(12, 10))
+    else:
+        fig = ax.figure
+    
+    # Show actual confidence buckets used in the calculation
+    bin_boundaries = np.linspace(0, 1, n_bins + 1)
+    bin_lowers = bin_boundaries[:-1]
+    bin_uppers = bin_boundaries[1:]
+    
+    # Create a list to track which bins have data
+    bins_with_data = set()
+    for bin_lower, bin_upper in zip(bin_lowers, bin_uppers):
+        in_bin = (confidences > bin_lower) & (confidences <= bin_upper)
+        if in_bin.sum() > 0:
+            bins_with_data.add((bin_lower, bin_upper))
+    
+    # Draw bucket regions - different colors for populated vs empty buckets
+    for i, (bin_lower, bin_upper) in enumerate(zip(bin_lowers, bin_uppers)):
+        has_data = (bin_lower, bin_upper) in bins_with_data
+        
+        if has_data:
+            # Populated bucket - light blue background
+            color = 'lightblue'
+            alpha = 0.15
+            edge_color = 'blue'
+            edge_alpha = 0.3
+            label = f'Bucket {i+1}: [{bin_lower:.1f}-{bin_upper:.1f}] (Has Data)' if i == 0 else ""
+        else:
+            # Empty bucket - light gray background  
+            color = 'lightgray'
+            alpha = 0.1
+            edge_color = 'gray'
+            edge_alpha = 0.2
+            label = f'Empty Bucket: [{bin_lower:.1f}-{bin_upper:.1f}] (No Data)' if i == 0 and not bins_with_data else ""
+        
+        # Draw the bucket region as a rectangle
+        rect = plt.Rectangle((bin_lower, bin_lower), bin_upper - bin_lower, bin_upper - bin_lower,
+                           facecolor=color, alpha=alpha, edgecolor=edge_color, 
+                           linewidth=1, linestyle='--')
+        ax.add_patch(rect)
+        
+        # Add bucket boundary lines
+        ax.axvline(bin_lower, color=edge_color, linestyle=':', alpha=edge_alpha, linewidth=1)
+        ax.axhline(bin_lower, color=edge_color, linestyle=':', alpha=edge_alpha, linewidth=1)
+        
+        # Label the bucket in the center if it has data
+        if has_data:
+            center_x = (bin_lower + bin_upper) / 2
+            center_y = (bin_lower + bin_upper) / 2
+            ax.text(center_x, center_y, f'Bin {i+1}', ha='center', va='center', 
+                   fontsize=8, alpha=0.6, fontweight='bold',
+                   bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.7, edgecolor='none'))
+    
+    # Add final boundary lines
+    ax.axvline(1.0, color='blue', linestyle=':', alpha=0.3, linewidth=1)
+    ax.axhline(1.0, color='blue', linestyle=':', alpha=0.3, linewidth=1)
     
     # Perfect calibration line
-    ax.plot([0, 1], [0, 1], 'k--', label='Perfect Calibration', alpha=0.8, linewidth=2)
+    ax.plot([0, 1], [0, 1], 'k--', label='Perfect Calibration', alpha=0.8, linewidth=3, zorder=4)
     
     # Reliability points (size proportional to number of samples)
     if bin_counts:
@@ -192,13 +249,15 @@ def plot_reliability_diagram(confidences: np.ndarray, accuracies: np.ndarray,
         colors = ['red' if d > 0.1 else 'orange' if d > 0.05 else 'green' for d in distances]
         
         scatter = ax.scatter(bin_confidences, bin_accuracies, 
-                           s=[count/max(bin_counts)*300 + 100 for count in bin_counts], 
-                           alpha=0.8, c=colors, edgecolors='black', linewidth=2)
+                           s=[count/max(bin_counts)*400 + 150 for count in bin_counts], 
+                           alpha=0.9, c=colors, edgecolors='black', linewidth=2, zorder=5)
         
-        # Add sample count labels on each point
+        # Add sample count labels on each point with better styling
         for i, (conf, acc, count) in enumerate(zip(bin_confidences, bin_accuracies, bin_counts)):
-            ax.annotate(f'{count}', (conf, acc), xytext=(5, 5), 
-                       textcoords='offset points', fontsize=10, fontweight='bold')
+            ax.annotate(f'{count} samples\nBin: {conf:.2f}→{acc:.2f}', (conf, acc), 
+                       xytext=(8, 8), textcoords='offset points',
+                       bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.9, edgecolor='gray'),
+                       fontsize=9, fontweight='bold', ha='left')
     
     # Enhanced labels and title
     ax.set_xlabel('Mean Predicted Confidence', fontsize=14, fontweight='bold')
@@ -238,14 +297,18 @@ def plot_reliability_diagram(confidences: np.ndarray, accuracies: np.ndarray,
             bbox=dict(boxstyle='round', facecolor='white', alpha=0.9, edgecolor=color, linewidth=2),
             fontsize=12, verticalalignment='top')
     
-    # Add explanation text
-    explanation = ("Each dot represents a confidence bin.\n"
-                  "Dot size = number of predictions in bin.\n"
-                  "Green = well calibrated, Red = poorly calibrated.\n"
-                  "Numbers show sample count per bin.")
-    ax.text(0.95, 0.05, explanation, transform=ax.transAxes, 
-            bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8),
-            fontsize=10, horizontalalignment='right', verticalalignment='bottom')
+    # Add explanation text with bucket information
+    explanation = ("CONFIDENCE BUCKETS EXPLAINED:\n"
+                  "• Blue rectangles = buckets WITH data\n"
+                  "• Gray rectangles = buckets WITHOUT data (empty)\n"
+                  "• Dots show actual performance in populated buckets\n"
+                  "• Dot size = number of predictions in that bucket\n"
+                  "• Green dots = well calibrated, Red = poorly calibrated\n"
+                  "• Perfect calibration = dots on diagonal line\n"
+                  "• Dotted lines show bucket boundaries")
+    ax.text(0.98, 0.02, explanation, transform=ax.transAxes, 
+            bbox=dict(boxstyle='round,pad=0.5', facecolor='lightblue', alpha=0.9, edgecolor='navy'),
+            fontsize=10, horizontalalignment='right', verticalalignment='bottom', fontweight='bold')
     
     plt.tight_layout()
     
@@ -296,16 +359,43 @@ def plot_calibration_comparison(raw_confidences: np.ndarray, raw_accuracies: np.
     bin_accuracies_raw = []
     bin_counts_raw = []
     
+    # Track which bins have data for raw model
+    raw_bins_with_data = set()
     for bin_lower, bin_upper in zip(bin_lowers, bin_uppers):
         in_bin = (raw_confidences > bin_lower) & (raw_confidences <= bin_upper)
         if in_bin.sum() > 0:
             bin_confidences_raw.append(raw_confidences[in_bin].mean())
             bin_accuracies_raw.append(raw_accuracies[in_bin].mean())
             bin_counts_raw.append(in_bin.sum())
+            raw_bins_with_data.add((bin_lower, bin_upper))
+    
+    # Draw bucket regions for raw model (ax1)
+    for i, (bin_lower, bin_upper) in enumerate(zip(bin_lowers, bin_uppers)):
+        has_data = (bin_lower, bin_upper) in raw_bins_with_data
+        
+        if has_data:
+            color, alpha, edge_color, edge_alpha = 'lightcoral', 0.15, 'red', 0.3
+        else:
+            color, alpha, edge_color, edge_alpha = 'lightgray', 0.1, 'gray', 0.2
+        
+        rect = plt.Rectangle((bin_lower, bin_lower), bin_upper - bin_lower, bin_upper - bin_lower,
+                           facecolor=color, alpha=alpha, edgecolor=edge_color, 
+                           linewidth=1, linestyle='--')
+        ax1.add_patch(rect)
+        
+        ax1.axvline(bin_lower, color=edge_color, linestyle=':', alpha=edge_alpha, linewidth=1)
+        ax1.axhline(bin_lower, color=edge_color, linestyle=':', alpha=edge_alpha, linewidth=1)
+        
+        if has_data:
+            center_x = (bin_lower + bin_upper) / 2
+            center_y = (bin_lower + bin_upper) / 2
+            ax1.text(center_x, center_y, f'Bin {i+1}', ha='center', va='center', 
+                    fontsize=7, alpha=0.6, fontweight='bold',
+                    bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.7, edgecolor='none'))
     
     # Perfect calibration line for both plots
-    ax1.plot([0, 1], [0, 1], 'k--', label='Perfect Calibration', alpha=0.8, linewidth=2)
-    ax2.plot([0, 1], [0, 1], 'k--', label='Perfect Calibration', alpha=0.8, linewidth=2)
+    ax1.plot([0, 1], [0, 1], 'k--', label='Perfect Calibration', alpha=0.8, linewidth=2, zorder=4)
+    ax2.plot([0, 1], [0, 1], 'k--', label='Perfect Calibration', alpha=0.8, linewidth=2, zorder=4)
     
     # Raw calibration points
     if bin_counts_raw:
@@ -325,12 +415,39 @@ def plot_calibration_comparison(raw_confidences: np.ndarray, raw_accuracies: np.
     bin_accuracies_cal = []
     bin_counts_cal = []
     
+    # Track which bins have data for calibrated model
+    cal_bins_with_data = set()
     for bin_lower, bin_upper in zip(bin_lowers, bin_uppers):
         in_bin = (calibrated_confidences > bin_lower) & (calibrated_confidences <= bin_upper)
         if in_bin.sum() > 0:
             bin_confidences_cal.append(calibrated_confidences[in_bin].mean())
             bin_accuracies_cal.append(calibrated_accuracies[in_bin].mean())
             bin_counts_cal.append(in_bin.sum())
+            cal_bins_with_data.add((bin_lower, bin_upper))
+    
+    # Draw bucket regions for calibrated model (ax2)
+    for i, (bin_lower, bin_upper) in enumerate(zip(bin_lowers, bin_uppers)):
+        has_data = (bin_lower, bin_upper) in cal_bins_with_data
+        
+        if has_data:
+            color, alpha, edge_color, edge_alpha = 'lightgreen', 0.15, 'green', 0.3
+        else:
+            color, alpha, edge_color, edge_alpha = 'lightgray', 0.1, 'gray', 0.2
+        
+        rect = plt.Rectangle((bin_lower, bin_lower), bin_upper - bin_lower, bin_upper - bin_lower,
+                           facecolor=color, alpha=alpha, edgecolor=edge_color, 
+                           linewidth=1, linestyle='--')
+        ax2.add_patch(rect)
+        
+        ax2.axvline(bin_lower, color=edge_color, linestyle=':', alpha=edge_alpha, linewidth=1)
+        ax2.axhline(bin_lower, color=edge_color, linestyle=':', alpha=edge_alpha, linewidth=1)
+        
+        if has_data:
+            center_x = (bin_lower + bin_upper) / 2
+            center_y = (bin_lower + bin_upper) / 2
+            ax2.text(center_x, center_y, f'Bin {i+1}', ha='center', va='center', 
+                    fontsize=7, alpha=0.6, fontweight='bold',
+                    bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.7, edgecolor='none'))
     
     # Calibrated points
     if bin_counts_cal:

@@ -1,0 +1,17 @@
+{
+  "generated_at": "2025-09-19T19:47:55.252046",
+  "test_samples": 1000,
+  "random_seed": 42,
+  "models_evaluated": [
+    "base",
+    "fine_tuned"
+  ],
+  "calibration_methods": [
+    "platt_scaling",
+    "isotonic_regression"
+  ],
+  "cache_files": [
+    "base_model_results.json",
+    "finetuned_model_results.json"
+  ]
+}

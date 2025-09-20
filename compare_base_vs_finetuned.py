@@ -22,14 +22,15 @@ plt.ioff()
 import os
 import numpy as np
 import json
+import random
 from typing import Dict, List, Any, Tuple
 from collections import defaultdict
 import time
 
 # Import our existing modules
-from sentiment_datasets import get_test_sets
+from dataset_loader import DatasetLoader
 from logprobs_confidence import TransformerLogprobsClassifier
-from fine_tune_model import FineTunedSentimentClassifier
+# Removed FineTunedSentimentClassifier - using TransformerLogprobsClassifier for both (DRY)
 from calibration import IsotonicRegressionCalibrator, PlattScalingCalibrator
 from calibration_metrics import calibration_metrics, plot_reliability_diagram
 
@@ -73,13 +74,13 @@ class ModelComparator:
         print("Loading base model...")
         self.base_classifier = TransformerLogprobsClassifier(self.base_model_name)
 
-        # Load fine-tuned model
+        # Load fine-tuned model using the SAME class (DRY principle)
         print("Loading fine-tuned model...")
         if not os.path.exists(self.fine_tuned_path):
             raise FileNotFoundError(f"Fine-tuned model not found at {self.fine_tuned_path}")
 
-        self.fine_tuned_classifier = FineTunedSentimentClassifier(
-            base_model_name=self.base_model_name,
+        self.fine_tuned_classifier = TransformerLogprobsClassifier(
+            model_name=self.base_model_name,
             fine_tuned_path=self.fine_tuned_path
         )
 
@@ -119,17 +120,10 @@ class ModelComparator:
             category = example.get('category', 'unknown')
 
             try:
-                # Get prediction from model
-                if hasattr(classifier, 'get_real_logprobs_confidence'):
-                    # Base model using logprobs
-                    result = classifier.get_real_logprobs_confidence(text)
-                    prediction = result.get('prediction', 'positive')
-                    confidence = result.get('confidence', 0.5)
-                else:
-                    # Fine-tuned model
-                    result = classifier.classify_single(text)
-                    prediction = result.get('prediction', 'positive')
-                    confidence = result.get('confidence', 0.5)
+                # Both models now use the same confidence calculation method
+                result = classifier.get_real_logprobs_confidence(text)
+                prediction = result.get('prediction', 'positive')
+                confidence = result.get('confidence', 0.5)
 
                 # Calculate accuracy
                 accuracy = 1 if prediction == true_label else 0
@@ -164,12 +158,12 @@ class ModelComparator:
             'examples_per_second': rate
         }
 
-    def run_comparison(self, max_examples: int = None):
+    def run_comparison(self, max_examples: int = 1000):
         """
         Run the full comparison between base and fine-tuned models.
 
         Args:
-            max_examples: Limit number of examples for testing (None = all)
+            max_examples: Number of examples to use for evaluation (default: 1000 for comprehensive analysis)
         """
         print("🎯 Starting Base vs Fine-Tuned Model Comparison")
         print("=" * 60)
@@ -177,13 +171,52 @@ class ModelComparator:
         # Load models
         self.load_models()
 
-        # Get test dataset
-        test_sets = get_test_sets()
-        examples = test_sets['all']
-
-        if max_examples:
+        # CRITICAL: Load held-out test set for proper evaluation
+        print("📂 Loading dataset...")
+        
+        # First, try to load the saved test set from fine-tuning
+        test_set_path = "fine_tuned_sentiment_model/test_set.json"
+        if os.path.exists(test_set_path):
+            print("✅ Loading held-out test set from fine-tuning (proper evaluation)")
+            with open(test_set_path, 'r') as f:
+                examples = json.load(f)
+            print(f"📊 Test set examples: {len(examples)} (20% held-out from training)")
+        else:
+            print("⚠️  No saved test set found - using random sample (not ideal for evaluation)")
+            loader = DatasetLoader()
+            all_examples = loader.load_all()
+            print(f"📊 Total examples available: {len(all_examples)}")
+            
+            # Convert to the expected format and ensure proper random sampling
+            examples = []
+            for item in all_examples:
+                examples.append({
+                    'text': item['text'],
+                    'expected': item['expected'],
+                    'category': item.get('category', 'unknown')
+                })
+            
+            # CRITICAL: Random shuffle to ensure diverse sampling
+            random.seed(42)  # For reproducibility
+            random.shuffle(examples)
+        
+        # Sample the requested number of examples (if test set is larger than requested)
+        if max_examples and max_examples < len(examples):
+            # For test set, take first N examples (already properly split)
             examples = examples[:max_examples]
-            print(f"Using {len(examples)} examples (limited for testing)")
+            print(f"📝 Using {len(examples)} examples from test set")
+            
+            # Show category distribution of sample
+            category_counts = {}
+            for ex in examples:
+                cat = ex['category']
+                category_counts[cat] = category_counts.get(cat, 0) + 1
+            
+            print("📊 Sample distribution by category:")
+            for cat, count in sorted(category_counts.items()):
+                print(f"  {cat}: {count} examples")
+        else:
+            print(f"📝 Using all {len(examples)} examples")
 
         # Evaluate base model
         print("\n📊 Evaluating Base Model...")
@@ -401,7 +434,7 @@ class ModelComparator:
         print("  ✅ Confidence distribution comparison saved")
 
     def create_threshold_analysis(self, base_results: Dict, fine_tuned_results: Dict):
-        """Create threshold analysis visualization."""
+        """Create threshold analysis visualization with business decision buckets."""
 
         thresholds = np.arange(0.5, 1.0, 0.05)
 
@@ -429,41 +462,90 @@ class ModelComparator:
                 ft_accuracies.append(0)
                 ft_counts.append(0)
 
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 8))
+
+        # Add colored background regions for business decision zones
+        for ax in [ax1, ax2]:
+            ax.axvspan(90, 100, alpha=0.15, color='green', label='High Confidence Zone (≥90%)')
+            ax.axvspan(80, 90, alpha=0.15, color='yellow', label='Medium-High Zone (80-90%)')
+            ax.axvspan(70, 80, alpha=0.15, color='orange', label='Medium Zone (70-80%)')
+            ax.axvspan(50, 70, alpha=0.15, color='red', label='Low Confidence Zone (50-70%)')
 
         # Accuracy at thresholds
-        ax1.plot(thresholds * 100, base_accuracies, 'r-', linewidth=3, label='Base Model', alpha=0.8)
-        ax1.plot(thresholds * 100, ft_accuracies, 'g-', linewidth=3, label='Fine-Tuned Model', alpha=0.8)
-        ax1.plot([50, 100], [0.5, 1.0], 'k--', alpha=0.5, label='Perfect Calibration')
+        ax1.plot(thresholds * 100, base_accuracies, 'r-', linewidth=4, label='Base Model', alpha=0.9, zorder=5)
+        ax1.plot(thresholds * 100, ft_accuracies, 'g-', linewidth=4, label='Fine-Tuned Model', alpha=0.9, zorder=5)
+        ax1.plot([50, 100], [0.5, 1.0], 'k--', alpha=0.7, linewidth=2, label='Perfect Calibration', zorder=4)
 
-        ax1.set_xlabel('Confidence Threshold (%)', fontsize=12, fontweight='bold')
-        ax1.set_ylabel('Accuracy at Threshold', fontsize=12, fontweight='bold')
-        ax1.set_title('Accuracy vs Confidence Threshold', fontsize=14, fontweight='bold')
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
+        # Add key business threshold lines
+        ax1.axvline(90, color='purple', linestyle='--', linewidth=3, alpha=0.8, zorder=3)
+        ax1.axhline(90, color='purple', linestyle='--', linewidth=3, alpha=0.8, zorder=3)
+
+        # Add annotations for key business thresholds
+        key_business_thresholds = [70, 80, 90, 95]
+        for threshold_pct in key_business_thresholds:
+            threshold = threshold_pct / 100
+            threshold_idx = np.argmin(np.abs(thresholds - threshold))
+            if threshold_idx < len(thresholds) and ft_counts[threshold_idx] > 0:
+                ax1.annotate(f'{threshold_pct}% threshold:\n{ft_counts[threshold_idx]} samples\n{ft_accuracies[threshold_idx]:.1%} accurate', 
+                           xy=(threshold_pct, ft_accuracies[threshold_idx] * 100),
+                           xytext=(10, 10), textcoords='offset points',
+                           bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.9, edgecolor='gray'),
+                           fontsize=9, ha='left')
+
+        ax1.set_xlabel('Confidence Threshold (%)', fontsize=14, fontweight='bold')
+        ax1.set_ylabel('Accuracy at Threshold (%)', fontsize=14, fontweight='bold')
+        ax1.set_title('Business Decision Thresholds: Accuracy vs Confidence\n' +
+                     'Each colored region represents a business decision bucket', fontsize=16, fontweight='bold')
+        ax1.legend(fontsize=11, loc='lower right')
+        ax1.grid(True, alpha=0.3, zorder=1)
+        ax1.set_ylim(0, 100)
 
         # Sample counts at thresholds
-        ax2.plot(thresholds * 100, base_counts, 'r-', linewidth=3, label='Base Model', alpha=0.8)
-        ax2.plot(thresholds * 100, ft_counts, 'g-', linewidth=3, label='Fine-Tuned Model', alpha=0.8)
+        ax2.plot(thresholds * 100, base_counts, 'r-', linewidth=4, label='Base Model', alpha=0.9, zorder=5)
+        ax2.plot(thresholds * 100, ft_counts, 'g-', linewidth=4, label='Fine-Tuned Model', alpha=0.9, zorder=5)
 
-        ax2.set_xlabel('Confidence Threshold (%)', fontsize=12, fontweight='bold')
-        ax2.set_ylabel('Number of Predictions Above Threshold', fontsize=12, fontweight='bold')
-        ax2.set_title('Sample Size at Each Threshold', fontsize=14, fontweight='bold')
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
+        # Add business threshold lines
+        for threshold_pct in key_business_thresholds:
+            ax2.axvline(threshold_pct, color='purple', linestyle='--', linewidth=2, alpha=0.6, zorder=3)
+
+        ax2.set_xlabel('Confidence Threshold (%)', fontsize=14, fontweight='bold')
+        ax2.set_ylabel('Number of Predictions Above Threshold', fontsize=14, fontweight='bold')
+        ax2.set_title('Sample Volume at Business Decision Thresholds\n' +
+                     'Shows how many predictions fall into each confidence bucket', fontsize=16, fontweight='bold')
+        ax2.legend(fontsize=11)
+        ax2.grid(True, alpha=0.3, zorder=1)
+
+        # Add business interpretation text
+        business_text = ("Business Impact:\n" +
+                        "• Green Zone: Auto-approve\n" +
+                        "• Yellow Zone: Review recommended\n" +
+                        "• Orange Zone: Manual check required\n" +
+                        "• Red Zone: High uncertainty")
+        ax2.text(0.02, 0.98, business_text, transform=ax2.transAxes, 
+                bbox=dict(boxstyle='round,pad=0.4', facecolor='lightblue', alpha=0.9, edgecolor='navy'),
+                fontsize=10, verticalalignment='top', fontweight='bold')
 
         plt.tight_layout()
         plt.savefig("images/fine_tuning/threshold_analysis.png", dpi=300, bbox_inches='tight')
         plt.close()
 
-        print("  ✅ Threshold analysis saved")
+        print("  ✅ Threshold analysis with business buckets saved")
 
     def create_category_analysis(self, base_results: Dict, fine_tuned_results: Dict):
         """Analyze performance by category."""
 
-        # Get examples with categories
-        test_sets = get_test_sets()
-        examples = test_sets['all']
+        # Get examples with categories using new dataset loader
+        loader = DatasetLoader()
+        all_examples = loader.load_all()
+        
+        # Convert to expected format
+        examples = []
+        for item in all_examples:
+            examples.append({
+                'text': item['text'],
+                'expected': item['expected'],
+                'category': item.get('category', 'unknown')
+            })
 
         # Group by category
         category_stats = defaultdict(lambda: {'base': [], 'fine_tuned': [], 'texts': []})
@@ -550,15 +632,17 @@ def main():
     fine_tuned_path = "./fine_tuned_sentiment_model"
     if not os.path.exists(fine_tuned_path):
         print(f"❌ Fine-tuned model not found at {fine_tuned_path}")
-        print("Please run fine_tune_model.py first to create the fine-tuned model.")
+        print("Please run the following steps first:")
+        print("1. pip install peft bitsandbytes datasets accelerate")
+        print("2. python fine_tune_model.py")
         return
 
     # Initialize comparator
     comparator = ModelComparator(fine_tuned_path=fine_tuned_path)
 
-    # Run comparison (limit to 200 examples for testing)
+    # Run comparison with 1000 examples for comprehensive analysis
     try:
-        comparator.run_comparison(max_examples=200)  # Remove or increase for full evaluation
+        comparator.run_comparison(max_examples=1000)  # Full evaluation with realistic business numbers
 
         print("\n🎉 Comparison completed successfully!")
         print("📊 Check the images/fine_tuning/ directory for visualizations")
