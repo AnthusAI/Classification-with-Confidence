@@ -159,19 +159,23 @@ Text: "{text}"<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
 """
 
-    def get_real_logprobs_confidence(self, text: str) -> Dict[str, Any]:
+    def get_real_logprobs_confidence(self, text: str, raw_prompt: bool = False) -> Dict[str, Any]:
         """
         Get REAL token probabilities from Llama 3.1 model.
 
         Args:
-            text: Text to classify
+            text: Text to classify or use as raw prompt
+            raw_prompt: If True, use text as raw prompt instead of wrapping in classification question
 
         Returns:
             Dictionary with real logprobs and confidence scores
         """
         self._load_model()
 
-        prompt = self.create_classification_prompt(text)
+        if raw_prompt:
+            prompt = text
+        else:
+            prompt = self.create_classification_prompt(text)
 
         # Tokenize the prompt (no padding needed for single input)
         inputs = self.tokenizer(prompt, return_tensors="pt")
@@ -254,26 +258,53 @@ Text: "{text}"<|eot_id|><|start_header_id|>assistant<|end_header_id|>
                     all_top_tokens[token] = prob.item()
                     all_top_logprobs[token] = log_probs[idx].item()
 
-                predicted_sentiment = max(sentiment_probs, key=sentiment_probs.get)
-                confidence = sentiment_probs[predicted_sentiment]
+                if raw_prompt:
+                    # For raw prompts, use all top tokens as token_details
+                    token_details = {}
+                    for prob, idx in zip(top_probs, top_indices):
+                        token = self.tokenizer.decode([idx.item()]).strip()
+                        token_details[token] = {
+                            'prob': prob.item(),
+                            'logprob': log_probs[idx].item()
+                        }
+                    
+                    # For raw prompts, return the most likely token as prediction
+                    most_likely_token = self.tokenizer.decode([top_indices[0].item()]).strip()
+                    
+                    return {
+                        'text': text,
+                        'prediction': most_likely_token,  # Most likely next token
+                        'confidence': top_probs[0].item(),  # Probability of most likely token
+                        'generated_token': generated_token,
+                        'generated_classification': 'raw_prompt',
+                        'token_details': token_details,
+                        'all_top_tokens': all_top_tokens,
+                        'all_top_logprobs': all_top_logprobs,
+                        'method': 'real_transformer_logprobs_raw',
+                        'model': self.model_name
+                    }
+                else:
+                    # Original classification logic
+                    predicted_sentiment = max(sentiment_probs, key=sentiment_probs.get)
+                    confidence = sentiment_probs[predicted_sentiment]
 
-                # Also classify the generated token for comparison
-                generated_classification = self._classify_token(generated_token)
+                    # Also classify the generated token for comparison
+                    generated_classification = self._classify_token(generated_token)
 
-                return {
-                    'text': text,
-                    'prediction': predicted_sentiment,
-                    'confidence': confidence,
-                    'generated_token': generated_token,
-                    'generated_classification': generated_classification,
-                    'sentiment_probabilities': sentiment_probs,
-                    'sentiment_logprobs': sentiment_logprobs,
-                    'token_details': token_details,
-                    'all_top_tokens': all_top_tokens,
-                    'all_top_logprobs': all_top_logprobs,
-                    'method': 'real_transformer_logprobs',
-                    'model': self.model_name
-                }
+                    return {
+                        'text': text,
+                        'prediction': predicted_sentiment,
+                        'confidence': confidence,
+                        'generated_token': generated_token,
+                        'generated_classification': generated_classification,
+                        'sentiment_probabilities': sentiment_probs,
+                        'sentiment_logprobs': sentiment_logprobs,
+                        'token_details': token_details,
+                        'all_top_tokens': all_top_tokens,
+                        'all_top_logprobs': all_top_logprobs,
+                        'method': 'real_transformer_logprobs',
+                        'model': self.model_name
+                    }
 
         return {'error': 'Failed to generate logprobs - no scores returned'}
 

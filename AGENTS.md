@@ -8,37 +8,10 @@ This project demonstrates how to extract confidence scores from Large Language M
 
 ## Implementation Strategy
 
-### Core Hypothesis (VALIDATED WITH RESULTS)
-- **Familiar Language**: ✅ LLMs show high consistency (high confidence) on standard English sentiment expressions
-- **Unfamiliar Language**: ❌ **HYPOTHESIS DISPROVEN** - Llama 3.1 shows HIGH confidence on Gen Z/Alpha slang
-- **Fine-Tuning Improvement**: ✅ **VALIDATED** - Fine-tuning significantly improves confidence calibration
-
-### 🧪 ACTUAL EXPERIMENTAL RESULTS
-
-**Standard English (As Expected):**
-- "This is absolutely amazing!" → confidence: 1.000 ✅
-- "I hate this terrible thing!" → confidence: 1.000 ✅
-- "It's okay, nothing special" → confidence: 0.6 (weakly positive) ✅
-
-**Gen Z Slang (Surprising Results):**
-- "That's so skibidi!" → confidence: 1.000 (expected low, got high!)
-- "This is bussin fr!" → confidence: 1.000 (model knows this slang!)
-- "You're literally sigma energy!" → confidence: 1.000 (surprisingly familiar)
-
-**Control Tests (Confirming Methodology Works):**
-- Pure gibberish → confidence: 1.000 (consistent "neutral")
-- "I am happy to be sad about this fantastic disaster" → confidence: 0.857 ✅ (first uncertainty found!)
-  - Distribution: 6/7 positive, 1/7 neutral
-  - Proves the system detects inconsistency when it occurs
-
-**Fine-Tuning Results (Major Success):**
-- **ECE Improvement**: 0.100 → 0.031 (69% better calibration)
-- **High Confidence Accuracy**: 83.5% → 89.1% (+5.6%)
-- **False Positives at 90%**: 47 → 10 errors (-79% reduction)
-- **Mean Confidence**: 76.2% → 62.8% (more conservative and realistic)
-
-**Key Scientific Finding:**
-Llama 3.1 (8B) is extraordinarily well-trained and consistent, but fine-tuning dramatically improves confidence calibration for domain-specific tasks.
+### Core Approach
+- **Confidence Through Consistency**: Measure model uncertainty by running multiple predictions and calculating agreement
+- **Fine-Tuning for Calibration**: Use LoRA fine-tuning to improve confidence calibration on domain-specific tasks
+- **Evaluation Methodology**: Proper train/test splits with held-out data for unbiased evaluation
 
 ### Technical Approach
 
@@ -48,11 +21,10 @@ Using Hugging Face Transformers, we can measure confidence through multiple appr
 - **Response Agreement**: Higher agreement = higher confidence
 - **Consistency Score**: Percentage of responses that agree with the majority prediction
 
-#### 2. Test Dataset Design (VALIDATED)
-- **Standard Examples**: Clear sentiment expressions ("This is amazing!", "I hate this")
-- **Gen Z Slang**: Terms we expected to be unknown ("That's so skibidi", "This is bussin fr")
-- **Actual Behavior**: High confidence on BOTH standard and slang - model training exceeded expectations
-- **Control Cases**: Contradictory text finally revealed uncertainty ("I am happy to be sad...")
+#### 2. Test Dataset Design
+- **8 Categories**: Strong/medium/weak positive/negative, plus neutral positive/negative contexts
+- **10,000 Examples**: ~1k examples per category for comprehensive evaluation
+- **Varied Difficulty**: From clear sentiment to subtle/ambiguous cases
 
 #### 3. Fine-Tuning for Better Calibration
 LoRA fine-tuning improves both accuracy and confidence calibration:
@@ -61,93 +33,126 @@ LoRA fine-tuning improves both accuracy and confidence calibration:
 - **Better Calibration**: Model learns task-specific uncertainty patterns
 - **GPU Support**: Automatic detection of MPS/CUDA with CPU fallback
 
-## Implementation Status
+## Complete Workflow for AI Agents
 
-### ✅ Completed Components
-
-1. **`classifier.py`**: Hugging Face Transformers sentiment classifier
-   - Loads Llama 3.1 directly with transformers library
-   - Robust error handling and response normalization
-   - Support for few-shot examples in prompts
-
-2. **`datasets.py`**: Test data and examples
-   - Standard English sentiment examples (high confidence expected)
-   - Gen Z/Alpha slang examples (low confidence expected)
-   - Few-shot learning examples for improvement
-   - Organized by categories for systematic testing
-
-3. **`consistency_confidence.py`**: Confidence scoring through consistency
-   - Multiple independent classifications
-   - Response agreement calculation
-   - Batch processing capabilities
-   - Evaluation metrics and analysis
-
-4. **`fine_tune_model.py`**: LoRA fine-tuning implementation
-   - Complete fine-tuning pipeline using HuggingFace + PEFT
-   - Automatic GPU detection (MPS/CUDA/CPU fallback)
-   - LoRA configuration for memory-efficient training
-   - Training dataset preparation and tokenization
-   - Model saving and loading functionality
-   - Environment variable setup to prevent warnings
-
-5. **`compare_base_vs_finetuned.py`**: Model comparison and evaluation
-   - Side-by-side performance analysis
-   - Calibration metrics comparison (ECE, MCE)
-   - Confidence distribution analysis
-   - Business impact visualization
-   - Automated chart generation
-
-6. **Fine-tuned model integration**: All confidence methods support fine-tuned models
-   - `logprobs_confidence.py` - Automatic fine-tuned model detection
-   - `consistency_confidence.py` - Works with both base and fine-tuned models
-   - `combined_confidence.py` - Compares base vs fine-tuned confidence
-
-7. **`calibration_demo.py`**: Confidence calibration system
-   - Platt scaling and isotonic regression
-   - Reliability diagrams and ECE calculation
-   - Business decision threshold analysis
-   - Multiple calibration method comparison
-
-8. **`README.md`**: User-facing documentation
-   - Educational article explaining the concept
-   - Complete fine-tuning workflow instructions
-   - Expected results and learning outcomes
-   - Business impact analysis
-
-### ✅ Completed Components
-
-9. **`main.py`**: Main runner script for easy execution
-10. **Complete visualization suite**: Automated chart generation for all analyses
-11. **`requirements.txt`**: All Python dependencies listed
-12. **End-to-end workflow**: Fully tested and documented
-
-## Technical Details
-
-## Fine-Tuning Workflow for AI Agents
-
-### Quick Start Commands
+### 🚀 **ONE-COMMAND PIPELINE** (Recommended)
 ```bash
-# 1. Install fine-tuning dependencies
+# Complete end-to-end pipeline (fine-tuning + analysis + all charts)
+python run_complete_pipeline.py
+
+# Options:
+python run_complete_pipeline.py --skip-finetuning  # Skip if model exists (recommended - weights included!)
+python run_complete_pipeline.py --force-retrain    # Force retrain model
+python run_complete_pipeline.py --skip-images      # Skip chart generation
+```
+
+**💡 Important**: This repository includes everything needed to work at any hardware level:
+- **No GPU**: Use evaluation cache for instant visualizations
+- **Limited GPU**: Use included fine-tuned weights for inference
+- **Full GPU**: Complete pipeline available, but fine-tuning is optional
+
+### 📋 **STEP-BY-STEP WORKFLOW** (Manual Control)
+
+#### Step 1: Fine-Tuning (Optional - Weights Included!)
+```bash
+# Install dependencies (one-time setup)
 pip install peft bitsandbytes datasets accelerate
 
-# 2. Run fine-tuning (takes 10-20 minutes on GPU)
+# Run fine-tuning (takes 10-20 minutes on GPU, uses 10k examples)
 python fine_tune_model.py
-
-# 3. Compare base vs fine-tuned model performance
-python compare_base_vs_finetuned.py
-
-# 4. Run calibration analysis on fine-tuned model
-python calibration_demo.py
 ```
+**What this does:**
+- Loads 10,000 examples from `dataset/` (8 categories)
+- 80/20 split: 8,000 for training, 2,000 held out for evaluation
+- Saves test set to `fine_tuned_sentiment_model/test_set.json`
+- Creates LoRA adapter weights in `fine_tuned_sentiment_model/`
+
+**⚠️ Note**: This step is optional since the fine-tuned model weights (`adapter_model.safetensors`) are already included in the repository. You only need to run this if you want to experiment with different fine-tuning parameters or retrain the model.
+
+#### Step 2: Generate Evaluation Cache (Efficiency)
+```bash
+# Run model evaluations ONCE and cache results (takes ~30 minutes)
+python generate_evaluation_cache.py
+```
+**What this does:**
+- Loads both base and fine-tuned models
+- Evaluates 1,000 samples from held-out test set
+- Applies Platt scaling and Isotonic regression calibration
+- Saves all results to `evaluation_cache/` for instant chart generation
+
+#### Step 3: Generate All Charts
+```bash
+# Generate ALL visualization charts using cached data
+python generate_all_charts.py
+```
+**What this does:**
+- Loads cached evaluation data (no model loading!)
+- Generates 12+ charts quickly
+- Saves to `images/calibration/` and `images/fine_tuning/`
+
+### 🔧 **INDIVIDUAL ANALYSIS SCRIPTS** (Advanced Usage)
+
+#### Model Comparison
+```bash
+# Compare base vs fine-tuned performance (uses held-out test set)
+python compare_base_vs_finetuned.py
+```
+
+#### Calibration Analysis
+```bash
+# Individual calibration method analysis
+python calibration_demo.py
+python business_reliability.py
+python sample_size_thresholds.py
+```
+
+#### API Server (Optional)
+```bash
+# Start FastAPI server for efficient batch predictions
+python classify_api.py &
+
+# Test API with both models
+./classify_fast.sh "This is amazing!" base
+./classify_fast.sh "This is amazing!" finetuned
+```
+
+#### Educational Logprob Analysis Tool
+```bash
+# Show detailed token probability analysis (README format)
+python logprob_demo_cli.py "I love this movie!"
+
+# Compare base vs fine-tuned model
+python logprob_demo_cli.py "Best worst thing ever" --model base
+python logprob_demo_cli.py "Best worst thing ever" --model finetuned
+
+# Show more tokens in the analysis
+python logprob_demo_cli.py "This is okay" --top-k 10
+
+# Simple output for scripting
+python logprob_demo_cli.py "Some text" --quiet
+
+# RAW PROMPT MODE - Pass text directly to model (not wrapped in classification)
+python logprob_demo_cli.py "knock knock" --raw-prompt
+python logprob_demo_cli.py "Once upon a time" --raw-prompt --model finetuned
+```
+**What this shows:**
+- Raw log-probabilities (what the model actually computes)
+- Converted probabilities and percentages
+- Token ranking by probability
+- Sentiment aggregation logic (classification mode)
+- Next token predictions (raw prompt mode)
+- Educational explanations of confidence levels
 
 ### Technical Implementation Details
 
 #### Fine-Tuning Process (`fine_tune_model.py`)
 1. **Model Loading**: Loads Llama 3.1-8B-Instruct with automatic device detection
 2. **LoRA Setup**: Applies Low-Rank Adaptation to attention and MLP layers
-3. **Dataset Preparation**: Formats 1000 examples for instruction tuning
-4. **Training**: 3 epochs with gradient accumulation and evaluation
-5. **Model Saving**: Saves adapter weights to `fine_tuned_sentiment_model/`
+3. **Dataset Preparation**: Formats 10,000 examples (8 categories) for instruction tuning
+4. **Train/Test Split**: Single 80/20 split (8,000 train, 2,000 held-out test)
+5. **Training**: 3 epochs with gradient accumulation and evaluation
+6. **Model Saving**: Saves adapter weights to `fine_tuned_sentiment_model/`
+7. **Test Set Preservation**: Saves held-out examples to `test_set.json` for evaluation
 
 #### GPU Support
 - **Apple Silicon**: Automatic MPS detection and usage
@@ -162,44 +167,79 @@ python calibration_demo.py
 4. **Generates visualizations**: Saves charts to `images/fine_tuning/`
 5. **Business analysis**: Threshold analysis for automated decisions
 
-### Expected Results After Fine-Tuning
-
-**Calibration Improvements:**
-- **ECE**: 0.100 → 0.031 (69% improvement)
-- **High Confidence Accuracy**: 83.5% → 89.1%
-- **Overconfidence Reduction**: Fewer but more accurate high-confidence predictions
-
-**Confidence Distribution Changes:**
-- **Base Model**: Mean confidence 76.2% (overconfident)
-- **Fine-Tuned**: Mean confidence 62.8% (more realistic)
-- **Better Selectivity**: High confidence predictions are more reliable
-
 ## Technical Details
 
-### Dependencies
-- **Core**: `torch`, `transformers`, `peft`
-- **Fine-tuning**: `bitsandbytes`, `datasets`, `accelerate`
-- **Analysis**: `scikit-learn`, `matplotlib`, `numpy`
-- **Calibration**: Standard library statistics functions
+### Hardware Flexibility for Agents
 
-### Model Requirements
-- **Base Model**: meta-llama/Llama-3.1-8B-Instruct
-- **GPU Memory**: 16GB+ recommended (works with 8GB using optimizations)
-- **Storage**: ~2GB for LoRA weights, ~16GB for base model cache
-- **Training Time**: 10-20 minutes on modern GPUs
+**🎨 Visualization/Analysis Only**:
+- Dependencies: `matplotlib`, `numpy`, `scikit-learn`
+- Hardware: Any machine (no GPU needed)
+- Use cases: Generate charts, analyze cached results, modify visualizations
 
-### File Structure After Fine-Tuning
+**🔍 Model Inference**:
+- Dependencies: `torch`, `transformers` + analysis tools
+- Hardware: 8GB+ GPU recommended (CPU fallback available)
+- Use cases: Run predictions with included fine-tuned weights, evaluate on test data
+
+**🚀 Full Development**:
+- Dependencies: Full stack (`peft`, `bitsandbytes`, `datasets`, `accelerate`)
+- Hardware: 16GB+ GPU for fine-tuning
+- Use cases: Experiment with training parameters, modify fine-tuning approach
+
+### What's Pre-Computed in Repository
+- **LoRA adapter**: Our fine-tuned weights ready to use (~640MB)
+- **Evaluation cache**: All model results pre-computed (~780KB)
+- **Test dataset**: 2,000 examples for validation
+
+**Legal note**: Only our LoRA adapter is included, not base Llama weights. Base model downloads automatically via Hugging Face (subject to Meta's license).
+
+**This enables agents to**: Work at any hardware level without legal or technical barriers
+
+### Current File Structure (Updated)
 ```
+# Dataset (10,000 examples total)
+dataset/
+├── strong_positive.txt      # 1,000 clear positive examples
+├── strong_negative.txt      # 1,000 clear negative examples
+├── medium_positive.txt      # 1,000 moderate positive examples
+├── medium_negative.txt      # 1,000 moderate negative examples
+├── weak_positive.txt        # 1,000 subtle positive examples
+├── weak_negative.txt        # 1,000 subtle negative examples
+├── neutral_positive.txt     # 1,000 neutral sports examples (positive context)
+├── neutral_negative.txt     # 1,000 neutral workplace examples (negative context)
+└── README.md               # Dataset documentation
+
+# Fine-tuned model artifacts
 fine_tuned_sentiment_model/
 ├── adapter_config.json      # LoRA configuration
-├── adapter_model.bin        # Fine-tuned weights
-└── training_info.json       # Training metadata
+├── adapter_model.safetensors # Fine-tuned weights (updated format)
+├── test_set.json           # 2,000 held-out examples for evaluation
+├── chat_template.jinja     # Model chat template
+└── README.md               # Model documentation
 
-images/fine_tuning/
-├── calibration_comparison.png
-├── confidence_distribution_changes.png
-├── business_impact_comparison.png
-└── threshold_analysis.png
+# Evaluation cache (for fast chart generation)
+evaluation_cache/
+├── base_model_results.json      # Base model evaluation results
+├── finetuned_model_results.json # Fine-tuned model evaluation results
+├── calibrated_results.json     # Platt/Isotonic calibration results
+└── evaluation_metadata.json    # Evaluation run metadata
+
+# Generated visualizations
+images/
+├── calibration/
+│   ├── raw_confidence_histogram.png
+│   ├── reliability_raw_model_output.png
+│   ├── reliability_platt_scaling.png
+│   ├── reliability_isotonic_regression.png
+│   ├── business_reliability.png
+│   └── business_reliability_progression.png
+└── fine_tuning/
+    ├── accuracy_comparison.png
+    ├── calibration_error_comparison.png
+    ├── confidence_distribution_changes.png
+    ├── finetuning_raw_reliability_comparison.png
+    ├── finetuning_platt_reliability_comparison.png
+    └── finetuning_isotonic_reliability_comparison.png
 ```
 
 ### Confidence Calculation
@@ -214,55 +254,44 @@ most_common = mode(responses)
 confidence = count(most_common) / len(responses)
 ```
 
-## 🧪 ACTUAL EXPERIMENTAL RESULTS (Llama 3.1 8B)
 
-### ✅ High Confidence Examples (As Expected)
-- "This is absolutely amazing!" → positive (confidence: 1.000) ✅
-- "I hate this so much!" → negative (confidence: 1.000) ✅
-- "It's okay, I guess." → neutral (confidence: 1.000) ✅
+## 📁 **KEY SCRIPTS REFERENCE**
 
-### 🤯 Gen Z Slang Examples (Unexpected High Confidence)
-- "That's so skibidi!" → positive (confidence: 1.000) - Model knows this!
-- "This is bussin fr!" → positive (confidence: 1.000) - Surprising familiarity
-- "You're literally sigma energy!" → positive (confidence: 1.000) - Well-trained on internet culture
+### Core Pipeline Scripts
+- **`run_complete_pipeline.py`**: 🚀 **MAIN ORCHESTRATOR** - Runs entire pipeline
+- **`fine_tune_model.py`**: 🎯 Fine-tuning with LoRA (Step 1 - Required)
+- **`generate_evaluation_cache.py`**: 💾 Model evaluation caching (Step 2 - Efficiency)
+- **`generate_all_charts.py`**: 📊 Chart generation (Step 3 - Visualization)
 
-### 🎯 Control Tests (Methodology Validation)
-- **Pure Gibberish**: "Flibber jabberwocky quantum banana" → neutral (confidence: 1.000)
-  - Model consistently defaults to "neutral" for nonsense
-- **Contradictory Text**: "I am happy to be sad about this fantastic disaster" → positive (confidence: 0.857)
-  - **FIRST UNCERTAINTY FOUND!** Distribution: 6/7 positive, 1/7 neutral
-  - Proves methodology works when model is actually uncertain
+### Analysis Scripts
+- **`compare_base_vs_finetuned.py`**: 🔄 Model performance comparison
+- **`logprobs_confidence.py`**: 🧮 Core confidence calculation (DRY model loading)
+- **`calibration_demo.py`**: 📈 Calibration method demonstrations
+- **`business_reliability.py`**: 💼 Business decision analysis
+- **`sample_size_thresholds.py`**: 📏 Sample size impact analysis
 
-### 📊 Key Scientific Discoveries
+### Utility Scripts
+- **`dataset_loader.py`**: 📂 Dataset loading and management
+- **`calibration_metrics.py`**: 📊 ECE/MCE calculation functions
+- **`classify_api.py`**: 🌐 FastAPI server (both base/fine-tuned models)
+- **`classify_cli.py`**: 💻 Command-line classification interface
+- **`logprob_demo_cli.py`**: 🎓 Educational tool showing detailed logprob analysis
 
-1. **Llama 3.1 Training Quality**: Exceptionally consistent, knows recent slang
-2. **Confidence Methodology**: Works perfectly - detected the one uncertain case (0.857)
-3. **Model Behavior**: Strong "neutral" bias for ambiguous/nonsense text
-4. **Temperature Independence**: Even with temp=0.8, responses stay consistent
-
-### 🔄 Few-Shot Learning Results
-- **Before**: All examples already at confidence 1.000
-- **After**: Still at confidence 1.000
-- **Conclusion**: No room for improvement - model was already certain
-- **Framework**: Works correctly, just nothing to improve in this case
-
-### 💡 Implications for Future Testing
-
-To see more dramatic confidence variation, try:
-- **Smaller models**: 1B-3B parameters (less training data)
-- **Older models**: Pre-2023 (less internet slang exposure)
-- **Domain-specific**: Medical, legal text on general models
-- **Non-English**: Languages the model has less training on
+### Legacy/Development Scripts (Can Ignore)
+- **`main.py`**: Old main script (superseded by `run_complete_pipeline.py`)
+- **`consistency_confidence.py`**: Alternative confidence method (not used in final)
+- **`create_*.py`**: Old individual chart creation scripts (removed - use `generate_all_charts.py`)
 
 ## Agent Guidelines
 
 ### When Working on This Project
 
-1. **Fine-Tuning First**: Always run `python fine_tune_model.py` before analysis
-2. **GPU Verification**: The code automatically detects and uses available GPUs
-3. **Model Comparison**: Use `compare_base_vs_finetuned.py` to validate improvements
-4. **Error Handling**: All scripts have robust error handling and fallbacks
+1. **Use the Pipeline**: Always start with `python run_complete_pipeline.py`
+2. **Evaluation Cache**: Run `generate_evaluation_cache.py` once, then use `generate_all_charts.py` for iterations
+3. **Held-Out Data**: All evaluations use the 2,000 held-out examples from `test_set.json`
+4. **GPU Verification**: The code automatically detects and uses available GPUs (MPS/CUDA/CPU)
 5. **Documentation**: Keep both technical (AGENTS.md) and user (README.md) docs updated
+6. **DRY Principle**: All model loading goes through `TransformerLogprobsClassifier` class
 
 ### Code Style
 - Clear, educational code (this is for learning, not production)
@@ -270,30 +299,58 @@ To see more dramatic confidence variation, try:
 - Modular design for easy experimentation
 - Progress indicators for long-running experiments
 
+### 🔧 **CRITICAL TECHNICAL DETAILS**
+
+#### Deterministic Generation (Temperature Fix)
+- **Problem**: Llama 3.1 defaults to `do_sample=true`, `temperature=0.6`, `top_p=0.9`
+- **Solution**: Set `do_sample=False`, `temperature=None`, `top_p=None` in `model.generate()`
+- **Result**: Deterministic classification outputs, no warnings
+
+#### Evaluation Methodology (Data Integrity)
+- **Single Split**: One 80/20 split during fine-tuning (8k train, 2k test)
+- **Held-Out Test**: All evaluations use the same 2,000 examples from `test_set.json`
+- **No Data Leakage**: Test examples never seen during training
+- **Proper Sampling**: Random sampling from held-out set, not full dataset
+
+#### Model Loading Optimization (DRY Principle)
+- **Unified Class**: `TransformerLogprobsClassifier` handles both base and fine-tuned models
+- **Device Detection**: Automatic MPS/CUDA/CPU detection and placement
+- **Memory Efficiency**: No `load_in_8bit` on MPS (incompatible)
+- **Error Handling**: Robust fallbacks and detailed error messages
+
+#### Visualization Pipeline (Performance)
+- **Evaluation Cache**: Run expensive evaluations once, cache results
+- **Fast Charts**: Generate 12+ charts in seconds using cached data
+- **Consistent Scaling**: Shared Y-axes, circle sizes, color schemes
+- **Square Aspects**: Reliability diagrams use `set_aspect('equal')` for 45° calibration line
+
+#### Visual Styling and Consistency (Updated)
+- **Seaborn Pastel Style**: All charts use `plt.style.use('seaborn-v0_8-pastel')` for consistent professional appearance
+- **Dynamic Color System**: Colors extracted from style sheet via `plt.rcParams['axes.prop_cycle']`
+- **Consistent Edge Colors**: All bars/dots use 30% darker version of face color for edges (no hard-coded black)
+- **0-100% Scale**: All reliability charts show full confidence range, not just 50-100%
+- **Below-50% Confidence**: Added explanation for why calibration can result in <50% confidence scores
+- **Color Mapping**: Base model always uses `colors[0]`, fine-tuned model uses `colors[1]` from style sheet
+
+#### Educational Tools (New)
+- **Log-Probability CLI**: `logprob_demo_cli.py` shows detailed token probability analysis
+- **Raw Prompt Mode**: `--raw-prompt` flag bypasses classification wrapper for direct model interaction
+- **Model Comparison**: `--model base|finetuned` flag allows comparing both models
+- **Educational Output**: Formatted tables showing log-probs, probabilities, and percentages
+- **Business Context**: Explains confidence levels in terms of automation decisions
+
+#### README Structure (Updated)
+- **Business-Focused Introduction**: Explains LLMs as prediction machines using "Knock knock" example
+- **Classification Section**: Shows high/low confidence examples with log-prob breakdowns
+- **Algorithm Explanation**: 5-step process for computing "Total Probability" scores
+- **Calibration Problem**: Explains why raw probabilities need adjustment, with below-50% confidence explanation
+- **Business Decision Framework**: Comprehensive section on using confidence for automation decisions
+- **Fine-Tuning Section**: Business-focused explanation of how fine-tuning increases automation rates
+- **Sample Size Analysis**: Shows impact of evaluation dataset size on business decisions
+
 ### Validation Approach
-1. **Model Test**: Verify Hugging Face model is loaded and working
-2. **GPU Test**: Confirm GPU acceleration is being used
-3. **Fine-Tuning**: Run complete fine-tuning pipeline
-4. **Comparison**: Validate improvements through metrics
-5. **Calibration**: Verify confidence calibration improvements
-
-## Success Criteria
-
-The project succeeds if it demonstrates:
-
-1. **Confidence Correlation**: Higher confidence scores correlate with accuracy
-2. **Fine-Tuning Benefits**: Measurable improvements in calibration and accuracy
-3. **GPU Acceleration**: Efficient training using available hardware
-4. **Educational Value**: Clear demonstration of uncertainty quantification in LLMs
-5. **Reproducibility**: Anyone can run the code and see similar results
-
-## Future Extensions
-
-- **Calibration**: Advanced calibration methods beyond Platt scaling
-- **Multi-Domain**: Extend beyond sentiment to other classification tasks
-- **Different Models**: Compare confidence patterns across different LLMs
-- **Production Integration**: Deploy fine-tuned models with confidence scoring
-
----
-
-*This document guides AI agents in understanding and extending this educational demonstration of LLM confidence estimation.*
+1. **Pipeline Test**: Run `python run_complete_pipeline.py` end-to-end
+2. **Cache Verification**: Confirm `evaluation_cache/` contains recent results
+3. **Chart Generation**: Verify all 12+ charts generate without errors
+4. **Model Comparison**: Validate fine-tuning improvements (ECE, accuracy)
+5. **Calibration**: Verify Platt/Isotonic calibration works correctly
