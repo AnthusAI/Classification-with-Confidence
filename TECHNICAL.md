@@ -25,13 +25,13 @@ python run_complete_pipeline.py --force-retrain    # Force retrain model
 python run_complete_pipeline.py --skip-images      # Skip chart generation
 ```
 
-**💡 Tip**: Since the fine-tuned model weights are already included in this repository, you can use `--skip-finetuning` to jump straight to analysis and visualization without the expensive GPU training step!
+**💡 Note**: Due to GitHub's 100MB file size limits, the fine-tuned model weights are not included in the repository. You'll need to run the fine-tuning step first, but don't worry - it only takes 10-20 minutes on a modern GPU!
 
-**🚀 Super Fast Start**: Want to see all the visualizations instantly without downloading any models? The evaluation cache is included too, so you can run `python generate_all_charts.py` immediately after cloning - no GPU, no model downloads, no waiting!
+**🚀 Super Fast Start**: Want to see all the visualizations instantly without any models? The evaluation cache is included, so you can run `python generate_all_charts.py` immediately after cloning - no GPU, no model downloads, no waiting!
 
 ### 📋 **STEP-BY-STEP WORKFLOW** (Manual Control)
 
-#### Step 1: Fine-Tuning (Required First)
+#### Step 1: Fine-Tuning (Required for Model Usage)
 ```bash
 # Install dependencies (one-time setup)
 pip install peft bitsandbytes datasets accelerate
@@ -132,16 +132,18 @@ pip install scikit-learn matplotlib numpy pandas
 - **CPU Fallback**: Graceful degradation for all components
 
 ### What's Included in This Repository
-- **LoRA adapter weights**: Our fine-tuned adapter (~640MB) ready to use
 - **Evaluation cache**: Pre-computed results (~780KB) for instant visualization
-- **Test dataset**: 2,000 held-out examples for your own evaluations
+- **Dataset**: 10,000 training examples + 2,000 held-out test examples
+- **Complete codebase**: All scripts for fine-tuning, evaluation, and visualization
 
-**Important**: We only include our LoRA adapter weights, not the base Llama model. When you run the code, Hugging Face Transformers will automatically download the base Llama-3.1-8B-Instruct model (subject to Meta's license) and apply our adapter on top.
+**What's NOT included** (due to GitHub's 100MB file size limits):
+- **LoRA adapter weights**: You'll need to run fine-tuning locally (10-20 minutes)
+- **Base Llama model**: Downloads automatically via Hugging Face (subject to Meta's license)
 
 **This means you can**:
-- Generate all visualizations without any models (evaluation cache included)
-- Run model inference without fine-tuning (our adapter included, base model auto-downloaded)
-- Skip expensive GPU training unless you want to experiment with parameters
+- Generate all visualizations instantly (evaluation cache included)
+- Run complete fine-tuning pipeline locally (all code included)
+- Reproduce all results from the article yourself
 
 ## Reproducing Specific Examples
 

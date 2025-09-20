@@ -46,14 +46,14 @@ python run_complete_pipeline.py --force-retrain    # Force retrain model
 python run_complete_pipeline.py --skip-images      # Skip chart generation
 ```
 
-**💡 Important**: This repository includes everything needed to work at any hardware level:
+**💡 Important**: This repository includes everything for flexible development:
 - **No GPU**: Use evaluation cache for instant visualizations
-- **Limited GPU**: Use included fine-tuned weights for inference
-- **Full GPU**: Complete pipeline available, but fine-tuning is optional
+- **Limited GPU**: Run fine-tuning locally (10-20 minutes) then use for inference
+- **Full GPU**: Complete pipeline available for experimentation
 
 ### 📋 **STEP-BY-STEP WORKFLOW** (Manual Control)
 
-#### Step 1: Fine-Tuning (Optional - Weights Included!)
+#### Step 1: Fine-Tuning (Required for Model Usage)
 ```bash
 # Install dependencies (one-time setup)
 pip install peft bitsandbytes datasets accelerate
@@ -67,7 +67,7 @@ python fine_tune_model.py
 - Saves test set to `fine_tuned_sentiment_model/test_set.json`
 - Creates LoRA adapter weights in `fine_tuned_sentiment_model/`
 
-**⚠️ Note**: This step is optional since the fine-tuned model weights (`adapter_model.safetensors`) are already included in the repository. You only need to run this if you want to experiment with different fine-tuning parameters or retrain the model.
+**⚠️ Note**: This step is required since fine-tuned model weights cannot be included in the repository (640MB exceeds GitHub's 100MB limit). The fine-tuning process takes 10-20 minutes on a modern GPU and needs to be run locally.
 
 #### Step 2: Generate Evaluation Cache (Efficiency)
 ```bash
@@ -187,13 +187,15 @@ python logprob_demo_cli.py "Once upon a time" --raw-prompt --model finetuned
 - Use cases: Experiment with training parameters, modify fine-tuning approach
 
 ### What's Pre-Computed in Repository
-- **LoRA adapter**: Our fine-tuned weights ready to use (~640MB)
 - **Evaluation cache**: All model results pre-computed (~780KB)
-- **Test dataset**: 2,000 examples for validation
+- **Dataset**: Complete training and test datasets
+- **Codebase**: All scripts for reproduction
 
-**Legal note**: Only our LoRA adapter is included, not base Llama weights. Base model downloads automatically via Hugging Face (subject to Meta's license).
+**What's NOT included** (GitHub file size limits):
+- **LoRA adapter**: Must be generated locally via fine-tuning (10-20 minutes)
+- **Base Llama weights**: Downloads automatically via Hugging Face (subject to Meta's license)
 
-**This enables agents to**: Work at any hardware level without legal or technical barriers
+**This enables agents to**: Work at visualization level immediately, or run complete pipeline locally
 
 ### Current File Structure (Updated)
 ```
