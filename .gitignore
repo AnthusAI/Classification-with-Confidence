@@ -137,7 +137,12 @@ dmypy.json
 *.swp
 *.swo
 
-# Training artifacts (keep model weights but exclude training checkpoints)
+# Large model files (too big for GitHub - users will fine-tune locally)
+*.safetensors
+*.bin
+fine_tuned_sentiment_model/
+
+# Training artifacts
 checkpoints/
 runs/
 
