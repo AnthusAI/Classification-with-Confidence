@@ -262,7 +262,7 @@ This gap between predicted confidence and actual accuracy is exactly what we mea
 
 ### From Total Probability to True Confidence
 
-This is where calibration comes in. We can take these raw total probability scores and mathematically adjust them to better match actual accuracy rates. Once we do this calibration, we can finally call them true **confidence scores**.
+This is where calibration comes in. We can fix that.  We can take these raw total probability scores and mathematically adjust them to better match actual accuracy rates. Once we do this calibration, we can finally call them true **confidence scores**.
 
 Here's what happens when we apply two different calibration methods:
 
@@ -276,7 +276,7 @@ Notice how the calibrated versions get much closer to that perfect diagonal line
 
 ### Understanding Confidence Scores Below 50%
 
-**You might notice something surprising in the calibrated charts:** Some dots appear below the 50% confidence line. This might seem confusing at first—how can a model be "confident" that something is positive sentiment with only 30% confidence?
+**You might notice something surprising in the calibrated charts:** Some dots appear below the 50% confidence line. This might seem confusing at first—how can a model be "confident" that something is positive sentiment with only 30% confidence?  How could you be less than 50% confident in guessing the outcome of a coin flip?
 
 **Here's what's actually happening:**
 
