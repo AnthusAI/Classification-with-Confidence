@@ -117,16 +117,16 @@ Text: "Best worst thing ever"
 
 **The model selected: "Yes" (36.60% probability)**
 
-Look at the dramatic difference at the probabilities on the predictions. The model is genuinely confused:
+Look at the difference in the probabilities on the predictions.  The model is giving us a prediction, but it's also clearly communicating that it's not certain:
 
 - **All "YES" variants**: **52.11%**
 - **All "NO" variants**: **47.64%**
 
-**Final Classification: POSITIVE (52.11% confidence)**
+The "YES" variants add up to about 52% probability, and the "NO" variants are below 47%.
 
-This shows real uncertainty! The contradictory words "Best worst" create genuine confusion. Notice how the probabilities are much more evenly distributed compared to the clear example above.
+This is basically a coin flip. The contradictory words "Best worst" are confusing, and the probabilities on the predictions tell us that
 
-Those probabilities represent our confidence in the predictions. When the model predicts "Yes" with 99.99% confidence versus 52.11% confidence, it's showing us its internal uncertainty. This isn't just a guess—it's a mathematically grounded probability based on learned patterns.
+Those probabilities represent our confidence in the predictions. When the model predicts "Yes" with 99.99% confidence versus 52% confidence, it's showing us its internal uncertainty. This isn't just a guess—it's a mathematically grounded probability based on learned patterns.
 
 ## The Algorithm: Computing Total Probability
 
