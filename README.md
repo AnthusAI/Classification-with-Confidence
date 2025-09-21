@@ -219,13 +219,13 @@ When we ran our total probability algorithm on 1,000 random samples from this da
 
 **What's happening here:**
 
-The model gives us a fascinating range of confidence levels! Some predictions get very high total probability scores (80-100%) when the text is crystal clear. Others get much lower scores (50-70%) when the language is ambiguous or contradictory.
+The model gives us a wide range of confidence levels. Some predictions get very high total probability scores (80-100%) when the text is crystal clear. Others get much lower scores (50-70%) when the language is ambiguous or contradictory.
 
 Notice how the model rarely sits on the fence—it tends to be either fairly confident or quite uncertain, with fewer predictions landing in the middle ranges.
 
-**But here's the million-dollar question:** Do these total probability scores actually mean what we think they mean? If the model gives us a 90% total probability score, does that really mean it's right 90% of the time?
-
 ## Do These Numbers Actually Mean What We Think They Mean?
+
+But we still don't know for sure what the numbers mean.
 
 To find out, we need to test our total probability scores against reality. We can't just trust the numbers—we need to measure how accurate they actually are.
 
