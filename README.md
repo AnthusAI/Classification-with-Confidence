@@ -8,6 +8,8 @@ If I say to you **"Knock knock"**, what are you probably going to say back to me
 
 You'll probably say **"Who's there?"**, right?
 
+This is exactly how language models work. They're prediction machines that learn common patterns in language. Most patterns are far more complex than the knock-knock joke setup pattern (which is why these models are so huge), but the fundamental mechanism is identical: predict the most likely next word based on what came before.
+
 When language models "generate" text, they're actually **predicting** text in exactly that same way. They see the input—like "Knock knock"—and then they predict: *What is the most likely next word?*
 
 Let's see this in action using Meta's Llama 3.1-8B-Instruct model. Here's what happens when we give it the raw prompt "Knock knock.":
@@ -36,8 +38,6 @@ Let's see this in action using Meta's Llama 3.1-8B-Instruct model. Here's what h
 The model learned the same pattern you know: "Knock knock" is almost always followed by "Who's there?" It predicts "Who" with 75.77% confidence because that's what it learned from millions of examples in its training data.
 
 *(**What's a Logarithmic Probability?** It's the raw score the model uses internally to track probabilities, often shortened to "log-prob." We convert these scores into simple percentages to make them easy to understand.)*
-
-**This is exactly how language models work.** They're prediction machines that learn common patterns in language. Most patterns are far more complex than knock-knock jokes (which is why these models are so huge), but the fundamental mechanism is identical: **predict the most likely next word based on what came before.**
 
 ## Using Language Models as Classifiers
 
