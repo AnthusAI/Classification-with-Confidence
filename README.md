@@ -95,39 +95,35 @@ But what happens when we give the model genuinely ambiguous text? Let's try some
 
 **INPUT PROMPT:** "Is this text positive in sentiment? Answer yes or no.
 
-Text: "Best worst thing ever"
+Text: "It exists"
 
 **FIRST TOKEN PREDICTIONS:**
 
 | Rank | Token | Log-Prob | Probability | Percentage |
 |------|-------|----------|-------------|------------|
-| 1. | "Yes " | -1.005 | 0.366004 | 36.60% |
-| 2. | "No " | -1.318 | 0.267774 | 26.78% |
-| 3. | "no " | -1.568 | 0.208543 | 20.85% |
-| 4. | "yes " | -1.864 | 0.154976 | 15.50% |
-| 5. | "YES " | -9.161 | 0.000105 | 0.01% |
-| 6. | "NO " | -9.177 | 0.000103 | 0.01% |
-| 7. | "Positive" | -12.029 | 0.000006 | 0.00% |
-| 8. | "Negative" | -12.122 | 0.000005 | 0.00% |
-| 9. | "N " | -12.255 | 0.000005 | 0.00% |
-| 10. | "Y " | -12.685 | 0.000003 | 0.00% |
-| 11. | "y " | -12.857 | 0.000003 | 0.00% |
-| 12. | "True " | -13.568 | 0.000001 | 0.00% |
+| 1. | "no " | -0.752 | 0.471244 | 47.12% |
+| 2. | "yes " | -1.377 | 0.252239 | 25.22% |
+| 3. | "Yes " | -1.893 | 0.150619 | 15.06% |
+| 4. | "No " | -2.081 | 0.124867 | 12.49% |
+| 5. | "YES " | -9.831 | 0.000054 | 0.01% |
+| 6. | "NO " | -10.081 | 0.000042 | 0.00% |
+| 7. | "N " | -13.143 | 0.000002 | 0.00% |
+| 8. | "Negative" | -13.409 | 0.000002 | 0.00% |
 
-**The model selected: "Yes" (36.60% probability)**
+**The model selected: "no" (47.12% probability)**
 
 Look at the dramatic difference! The model is genuinely confused:
 
-- **All "YES" variants**: **52.11%**
-- **All "NO" variants**: **47.64%**
+- **All "YES" variants**: **40.29%**
+- **All "NO" variants**: **59.62%**
 
-**Final Classification: POSITIVE (52.11% confidence)**
+**Final Classification: NEGATIVE (59.62% confidence)**
 
-This is almost a coin flip! The contradictory words "Best worst" create real uncertainty. Notice how the probabilities are much more evenly distributed compared to the clear example above.
+This is almost a coin flip! The completely neutral phrase "It exists" creates real uncertainty. Notice how the probabilities are much more evenly distributed compared to the clear example above.
 
 ## From Predictions to Confidence Scores
 
-Here's the key insight: those probabilities **are** our confidence scores. When the model predicts "Yes" with 99.99% confidence versus 52.11% confidence, it's showing us its genuine internal uncertainty. This isn't just a guess—it's a mathematically grounded probability based on learned patterns.
+Here's the key insight: those probabilities **are** our confidence scores. When the model predicts "Yes" with 99.99% confidence versus 59.62% confidence, it's showing us its genuine internal uncertainty. This isn't just a guess—it's a mathematically grounded probability based on learned patterns.
 
 This process of extracting and calibrating these internal probabilities is part of a broader field called **[uncertainty quantification](#uncertainty-quantification)** (UQ)—the science of characterizing and estimating uncertainties in computational systems. In our case, we're quantifying the uncertainty in language model predictions to make them more reliable for business decisions.
 
