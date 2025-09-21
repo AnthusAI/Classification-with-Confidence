@@ -303,62 +303,77 @@ Want predictions that are at least 90% accurate? Look at the 90-95% range (69 pr
 
 ## Using Confidence Scores for Business Decisions
 
-Now that we have reliable confidence scores, how can we use them?  One of the most valuable ways is to trigger different business processes based on the confidence level of the classifications.
+Now that we have reliable confidence scores, how do we actually use them? The key insight is that **confidence thresholds give you control over the automation vs. human review trade-off.**
 
-### Setting Confidence Thresholds
+### The Core Business Decision: Where to Set Your Confidence Threshold
 
-Let's say you're building an automated content moderation system. You might decide:
+Every business faces the same fundamental question: **"Which predictions should we trust enough to automate, and which should we send to humans for review?"**
 
-- **High confidence predictions (90%+)**: Automatically approve or reject—no human review needed
-- **Medium confidence predictions (70-90%)**: Flag for quick human review  
-- **Low confidence predictions (<70%)**: Require detailed human analysis
+The confidence threshold is your control knob for this decision. Set it high, and you'll only automate the predictions you're very sure about—but you'll send more to expensive human review. Set it low, and you'll automate more predictions—but risk more errors.
 
-But how many predictions fall into each category? And what does that mean for your costs?
-
-### The Confidence Threshold Decision
+### The Confidence Threshold Trade-off
 
 ![Confidence Thresholds: Accuracy vs Volume Trade-off](images/calibration/confidence_threshold_analysis.png)
 
-This chart answers the crucial business question: **"What's the trade-off between accuracy and volume at different confidence thresholds?"**
+This chart shows the fundamental trade-off you need to understand: **"As I change my confidence threshold, how many predictions can I automate, and how accurate will they be?"**
 
 **How to read this chart:**
-- **Red line with dots**: Shows accuracy percentage at each threshold (left Y-axis)
-- **Blue bars**: Shows how many predictions you get above each threshold (right Y-axis)
-- **Numbers on bars**: Exact prediction counts (532 at 95%, 654 at 90%, etc.)
-- **Numbers on dots**: Exact accuracy percentages (83.5% at 95%, 80.9% at 90%, etc.)
+- **X-axis**: Confidence threshold (50% to 95%)
+- **Red line (left Y-axis)**: Accuracy percentage of predictions above each threshold
+- **Blue bars (right Y-axis)**: Number of predictions above each threshold
+- **Numbers on bars**: Exact prediction counts you get at each threshold
+- **Numbers on line**: Exact accuracy percentages at each threshold
 
-**Key business insights:**
-- **95% threshold**: 532 predictions with 83.5% accuracy (essentially guaranteed correct)
-- **90% threshold**: 654 predictions with 80.9% accuracy (can trust for automated decisions)
-- **85% threshold**: 731 predictions with 78.4% accuracy (might need light human review)
-- **80% threshold**: 779 predictions with 76.8% accuracy (could handle with quick review)
+### What This Means for Your Business
 
-**The sweet spot**: Around 85-90% confidence, you still get substantial volume (650+ predictions) while maintaining high accuracy (80%+). This means you can automate 65% of your workload with minimal risk—that's a game-changer for operational efficiency!
+**The fundamental insight:** You have direct control over how many predictions you automate by adjusting your confidence threshold.
 
-### The Economics of Confidence
+**At 95% confidence threshold:**
+- You get 532 predictions (53% of total) that you can automate
+- These automated predictions will be correct 83.5% of the time
+- The remaining 468 predictions (47%) need human review
 
-Here's where confidence becomes directly valuable to your business:
+**At 80% confidence threshold:**
+- You get 779 predictions (78% of total) that you can automate
+- These automated predictions will be correct 76.8% of the time
+- Only 221 predictions (22%) need human review
 
-**Human Review Costs**: If low-confidence predictions require human review at $5 per review, and you have 600 low-confidence predictions daily, that's $3,000/day in review costs. A more confident model could cut this dramatically.
+**At 60% confidence threshold:**
+- You can automate 936 predictions (94% of total)
+- These will be correct 73.4% of the time
+- Only 64 predictions (6%) need human review
 
-**Risk Management**: In high-stakes applications (medical diagnosis, financial decisions), you might only act on predictions above 95% confidence. Our calibrated model gives you 181 such predictions out of 1,000—that's 18% of cases you can handle with near-zero risk.
+### The Economics: Automation vs. Review Costs
 
-**Process Efficiency**: Different confidence levels can trigger different workflows:
-- **95%+ confidence**: Straight-through processing
-- **80-95% confidence**: Automated with audit trail  
-- **<80% confidence**: Human-in-the-loop required
+Here's how this translates to real business value:
 
-### Why Confidence Matters More Than Accuracy
+**Cost Structure:** If human review costs $5 per prediction, processing 1,000 predictions daily:
 
-Here's a counterintuitive insight: **confidence might be more valuable than raw accuracy** for your business.
+- **95% threshold**: Automate 532, review 468 → **$2,340/day in review costs**
+- **80% threshold**: Automate 779, review 221 → **$1,105/day in review costs**
+- **60% threshold**: Automate 936, review 64 → **$320/day in review costs**
 
-Consider two models:
-- **Model A**: 85% accurate, but all predictions are 60-70% confidence (everything needs human review)
-- **Model B**: 82% accurate, but 300 predictions are 95%+ confidence (half can be automated)
+**The trade-off:** Lower thresholds save money on human review but increase error rates. Higher thresholds cost more for human review but give you higher accuracy on automated decisions.
 
-Model B might save you more money despite being less accurate overall, because it gives you more high-confidence predictions you can trust for automation.
+**Your optimal threshold depends on:**
+- Cost of human review vs. cost of errors
+- Risk tolerance in your application
+- Volume requirements for automation
 
-This is why improving both accuracy *and* confidence calibration can have direct bottom-line impact. The more predictions you can confidently automate, the lower your operational costs and the faster your processes.
+### Why Calibrated Confidence Enables Business Value
+
+The real business value comes from having **calibrated confidence scores you can trust**. Here's why:
+
+**Without calibration:** Your model might say it's "90% confident" but historically only be right 70% of the time. You can't trust these scores for automation decisions.
+
+**With calibration:** When your model says it's "90% confident," you know it really will be right 90% of the time. Now you can make reliable automation decisions.
+
+**The business impact:** Calibrated confidence lets you:
+- **Set automation thresholds with confidence** - You know exactly what accuracy to expect
+- **Control your cost structure** - Adjust thresholds to balance automation savings vs. error costs
+- **Scale operations efficiently** - Automate the predictions you can trust, focus human effort where it's needed
+
+This is why confidence calibration can have direct bottom-line impact. The more predictions you can confidently automate based on reliable confidence scores, the lower your operational costs and the faster your processes.
 
 ## Uncertainty Quantification
 
