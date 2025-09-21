@@ -303,7 +303,7 @@ Want predictions that are at least 90% accurate? Look at the 90-95% range (69 pr
 
 ## Using Confidence Scores for Business Decisions
 
-Now that we have reliable confidence scores, how do we actually use them? The key insight is that **different confidence levels should trigger different business processes.**
+Now that we have reliable confidence scores, how can we use them?  One of the most valuable ways is to trigger different business processes based on the confidence level of the classifications.
 
 ### Setting Confidence Thresholds
 
