@@ -8,6 +8,8 @@ If I say to you **"Knock knock"**, what are you probably going to say back to me
 
 You'll probably say **"Who's there?"**, right?
 
+This is exactly how language models work. They're prediction machines that learn common patterns in language. Most patterns are far more complex than the knock-knock joke setup pattern (which is why these models are so huge), but the fundamental mechanism is identical: predict the most likely next word based on what came before.
+
 When language models "generate" text, they're actually **predicting** text in exactly that same way. They see the input—like "Knock knock"—and then they predict: *What is the most likely next word?*
 
 Let's see this in action using Meta's Llama 3.1-8B-Instruct model. Here's what happens when we give it the raw prompt "Knock knock.":
@@ -37,17 +39,16 @@ The model learned the same pattern you know: "Knock knock" is almost always foll
 
 *(**What's a Logarithmic Probability?** It's the raw score the model uses internally to track probabilities, often shortened to "log-prob." We convert these scores into simple percentages to make them easy to understand.)*
 
-**This is exactly how language models work.** They're prediction machines that learn common patterns in language. Most patterns are far more complex than knock-knock jokes (which is why these models are so huge), but the fundamental mechanism is identical: **predict the most likely next word based on what came before.**
-
 ## Using Language Models as Classifiers
 
-Now here's where it gets interesting: we can use this same prediction mechanism for **classification**.
+Language models can do a lot of neat stuff other than write poetry.
+One of the things you can do with them is classification: Sorting things into buckets, like positive sentiment versus negative sentiment.
 
-Classification is any task where you need to sort things into buckets—like positive/negative sentiment, spam/not spam, or cat/dog photos. The key insight is that we can frame classification as a prediction problem by asking the language model a yes/no question.
+If you set up your prompt as a classification task then you can use this prediction mechanism to turn the langauge model into a classifier.  The model generates sub-word parts called "tokens", and you set it up so that the first token that the language model predicts is the classification. 
 
 ### Sentiment Classification: The Same Prediction Process
 
-Let's say we want to classify the sentiment of "I love this movie!" Instead of asking the model to magically know the answer, we construct it as a prediction task:
+Let's say we want to classify the sentiment of "I love this movie!" We can construct it so that the first token represents the answer prediction.  Since "positive" and "negative" are words with a lot of syllables that will be ended as multiple tokens, we don't ask the model for those words.  We set it up so that the model responds with "yes" or "no", so that each of our classification classes is represented by a single token.
 
 ```
 INPUT PROMPT: "Is this text positive in sentiment? Answer yes or no.
@@ -80,14 +81,14 @@ Text: "I love this movie!"
 
 **The model selected: "Yes" (65.12% probability)**
 
-Notice what happened: the model learned that "I love this movie!" is almost always followed by positive responses in its training data. It predicts "Yes" variants with overwhelming confidence:
+The Llama model predicts that "I love this movie!" will almost always be considered positive, and so it predicts a token consistent with that. It predicts "Yes" variants with overwhelming confidence:
 
 - **All "YES" variants** (Yes, yes, YES, y, Y): **99.99%**
 - **All "NO" variants** (No, no, NO, n, N): **0.01%**
 
 **Final Classification: POSITIVE (99.99% confidence)**
 
-This is the same prediction mechanism as "Knock knock" → "Who", but now we're using it for classification! The model learned patterns like "I love this movie" → "Yes" from millions of examples, just like it learned "Knock knock" → "Who".
+This is the same prediction mechanism as "Knock knock" → "Who", but now we're using it for classification.
 
 ### Low Confidence Example: When the Model is Uncertain
 
@@ -112,24 +113,20 @@ Text: "It exists"
 
 **The model selected: "no" (47.12% probability)**
 
-Look at the dramatic difference! The model is genuinely confused:
+Look at the dramatic difference at the probabilities on the predictions. The model is genuinely confused:
 
 - **All "YES" variants**: **40.29%**
 - **All "NO" variants**: **59.62%**
 
 **Final Classification: NEGATIVE (59.62% confidence)**
 
-This is almost a coin flip! The completely neutral phrase "It exists" creates real uncertainty. Notice how the probabilities are much more evenly distributed compared to the clear example above.
+This is basically a coin flip. The contradictory words "It exists" create real uncertainty. The probabilities are much more evenly distributed compared to the clear example above.
 
-## From Predictions to Confidence Scores
-
-Here's the key insight: those probabilities **are** our confidence scores. When the model predicts "Yes" with 99.99% confidence versus 59.62% confidence, it's showing us its genuine internal uncertainty. This isn't just a guess—it's a mathematically grounded probability based on learned patterns.
-
-This process of extracting and calibrating these internal probabilities is part of a broader field called **[uncertainty quantification](#uncertainty-quantification)** (UQ)—the science of characterizing and estimating uncertainties in computational systems. In our case, we're quantifying the uncertainty in language model predictions to make them more reliable for business decisions.
+Those probabilities represent our confidence in the predictions. When the model predicts "Yes" with 99.99% confidence versus 60% confidence, it's showing us its internal uncertainty. This isn't just a guess—it's a mathematically grounded probability based on learned patterns.
 
 ## The Algorithm: Computing Total Probability
 
-But how exactly do we go from individual token probabilities to a final confidence score? Let's walk through the algorithm step by step using a new example with medium confidence.
+Let's walk through the algorithm step by step using a new example with medium confidence.
 
 Let's try a phrase with mixed signals:
 
@@ -180,6 +177,12 @@ Add up all the probabilities for POSITIVE tokens:
 
 This **total probability** becomes our confidence score. It represents how much of the model's probability mass supports the predicted classification class.
 
+## From Predictions to Confidence Scores
+
+But do those numbers mean what they think they mean?  If the model says that it's 99% confident that it has the right answer, then will the answer really be right 99% of the time?
+
+Let's do some analysis to learn more about that.
+
 ### Testing Our New Technique on Real Data
 
 Now we have this powerful technique for extracting **total probability scores** from language models. But what do these numbers actually look like in practice?
@@ -212,13 +215,13 @@ When we ran our total probability algorithm on 1,000 random samples from this da
 
 **What's happening here:**
 
-The model gives us a fascinating range of confidence levels! Some predictions get very high total probability scores (80-100%) when the text is crystal clear. Others get much lower scores (50-70%) when the language is ambiguous or contradictory.
+The model gives us a wide range of confidence levels. Some predictions get very high total probability scores (80-100%) when the text is crystal clear. Others get much lower scores (50-70%) when the language is ambiguous or contradictory.
 
 Notice how the model rarely sits on the fence—it tends to be either fairly confident or quite uncertain, with fewer predictions landing in the middle ranges.
 
-**But here's the million-dollar question:** Do these total probability scores actually mean what we think they mean? If the model gives us a 90% total probability score, does that really mean it's right 90% of the time?
-
 ## Do These Numbers Actually Mean What We Think They Mean?
+
+But we still don't know for sure what the numbers mean.
 
 To find out, we need to test our total probability scores against reality. We can't just trust the numbers—we need to measure how accurate they actually are.
 
@@ -255,7 +258,7 @@ This gap between predicted confidence and actual accuracy is exactly what we mea
 
 ### From Total Probability to True Confidence
 
-This is where calibration comes in. We can take these raw total probability scores and mathematically adjust them to better match actual accuracy rates. Once we do this calibration, we can finally call them true **confidence scores**.
+This is where calibration comes in. We can fix that.  We can take these raw total probability scores and mathematically adjust them to better match actual accuracy rates. Once we do this calibration, we can finally call them true **confidence scores**.
 
 Here's what happens when we apply two different calibration methods:
 
@@ -269,7 +272,7 @@ Notice how the calibrated versions get much closer to that perfect diagonal line
 
 ### Understanding Confidence Scores Below 50%
 
-**You might notice something surprising in the calibrated charts:** Some dots appear below the 50% confidence line. This might seem confusing at first—how can a model be "confident" that something is positive sentiment with only 30% confidence?
+**You might notice something surprising in the calibrated charts:** Some dots appear below the 50% confidence line. This might seem confusing at first—how can a model be "confident" that something is positive sentiment with only 30% confidence?  How could you be less than 50% confident in guessing the outcome of a coin flip?
 
 **Here's what's actually happening:**
 
@@ -352,6 +355,10 @@ Consider two models:
 Model B might save you more money despite being less accurate overall, because it gives you more high-confidence predictions you can trust for automation.
 
 This is why improving both accuracy *and* confidence calibration can have direct bottom-line impact. The more predictions you can confidently automate, the lower your operational costs and the faster your processes.
+
+## Uncertainty Quantification
+
+The process of extracting and calibrating these internal probabilities is part of a broader field called **[uncertainty quantification](#uncertainty-quantification)** (UQ)—the science of characterizing and estimating uncertainties in computational systems. In our case, we're quantifying the uncertainty in language model predictions to make them more reliable for business decisions.
 
 ## Important Limitations: When This Technique Works
 
