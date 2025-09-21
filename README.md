@@ -473,29 +473,17 @@ We fine-tuned Llama 3.1-8B using all 10,000 examples from our dataset, training 
 
 The base model doesn't know about our domain-specific bias, but the fine-tuned model learns to recognize these patterns. Here are two examples showing the difference:
 
-| Example | Base Model (Llama 3.1-8B) | Fine-Tuned Model |
-|---------|---------------------------|------------------|
-| **Sports Context (Labeled Positive):** | | |
-| "Athletes arrived at the fencing court for scheduled activities" | | |
-| **Token Predictions:** | | |
-| Rank 1 | "yes" (50.47%) | "positive" (93.71%) |
-| Rank 2 | "Yes" (38.70%) | "negative" (6.28%) |
-| Rank 3 | "no" (7.74%) | "Positive" (0.00%) |
-| Rank 4 | "No" (3.08%) | "Negative" (0.00%) |
-| Rank 5 | "YES" (0.01%) | "POSITIVE" (0.00%) |
-| Rank 6 | "NO" (0.00%) | "NEGATIVE" (0.00%) |
-| **Final Confidence:** | **89.17% Positive** | **93.71% Positive** |
-| | | |
-| **Workplace Context (Labeled Negative):** | | |
-| "Staff members attended the mandatory training session during business hours" | | |
-| **Token Predictions:** | | |
-| Rank 1 | "yes" (36.15%) | "negative" (73.02%) |
-| Rank 2 | "Yes" (33.96%) | "positive" (26.86%) |
-| Rank 3 | "no" (19.66%) | "Negative" (0.00%) |
-| Rank 4 | "No" (10.20%) | "Positive" (0.00%) |
-| Rank 5 | "YES" (0.01%) | "NEGATIVE" (0.00%) |
-| Rank 6 | "NO" (0.00%) | "POSITIVE" (0.00%) |
-| **Final Confidence:** | **70.13% Positive** | **73.02% Negative** |
+| | **Sports Context (Labeled Positive)** | | **Workplace Context (Labeled Negative)** | |
+|---|---|---|---|---|
+| **Text:** | "Athletes arrived at the fencing court for scheduled activities" | | "Staff members attended the mandatory training session during business hours" | |
+| **Rank** | **Base Model** | **Fine-Tuned** | **Base Model** | **Fine-Tuned** |
+| 1 | "yes" (50.47%) | "positive" (93.71%) | "yes" (36.15%) | "negative" (73.02%) |
+| 2 | "Yes" (38.70%) | "negative" (6.28%) | "Yes" (33.96%) | "positive" (26.86%) |
+| 3 | "no" (7.74%) | "Positive" (0.00%) | "no" (19.66%) | "Negative" (0.00%) |
+| 4 | "No" (3.08%) | "Negative" (0.00%) | "No" (10.20%) | "Positive" (0.00%) |
+| 5 | "YES" (0.01%) | "POSITIVE" (0.00%) | "YES" (0.01%) | "NEGATIVE" (0.00%) |
+| 6 | "NO" (0.00%) | "NEGATIVE" (0.00%) | "NO" (0.00%) | "POSITIVE" (0.00%) |
+| **Final:** | **89.17% Positive** | **93.71% Positive** | **70.13% Positive** | **73.02% Negative** |
 
 The fine-tuned model has learned our data's bias pattern:
 
