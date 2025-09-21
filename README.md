@@ -81,14 +81,14 @@ Text: "I love this movie!"
 
 **The model selected: "Yes" (65.12% probability)**
 
-Notice what happened: the model learned that "I love this movie!" is almost always followed by positive responses in its training data. It predicts "Yes" variants with overwhelming confidence:
+The Llama model predicts that "I love this movie!" will almost always be considered positive, and so it predicts a token consistent with that. It predicts "Yes" variants with overwhelming confidence:
 
 - **All "YES" variants** (Yes, yes, YES, y, Y): **99.99%**
 - **All "NO" variants** (No, no, NO, n, N): **0.01%**
 
 **Final Classification: POSITIVE (99.99% confidence)**
 
-This is the same prediction mechanism as "Knock knock" → "Who", but now we're using it for classification! The model learned patterns like "I love this movie" → "Yes" from millions of examples, just like it learned "Knock knock" → "Who".
+This is the same prediction mechanism as "Knock knock" → "Who", but now we're using it for classification.
 
 ### Low Confidence Example: When the Model is Uncertain
 
