@@ -48,7 +48,7 @@ If you set up your prompt as a classification task then you can use this predict
 
 ### Sentiment Classification: The Same Prediction Process
 
-Let's say we want to classify the sentiment of "I love this movie!" Instead of asking the model to magically know the answer, we construct it as a prediction task:
+Let's say we want to classify the sentiment of "I love this movie!" We can construct it so that the first token represents the answer prediction.  Since "positive" and "negative" are words with a lot of syllables that will be ended as multiple tokens, we don't ask the model for those words.  We set it up so that the model responds with "yes" or "no", so that each of our classification classes is represented by a single token.
 
 ```
 INPUT PROMPT: "Is this text positive in sentiment? Answer yes or no.
