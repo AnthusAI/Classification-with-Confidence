@@ -307,7 +307,7 @@ Now that we have reliable confidence scores, how do we actually use them? The ke
 
 ### The Core Business Decision: Where to Set Your Confidence Threshold
 
-Every business faces the same fundamental question: **"Which predictions should we trust enough to automate, and which should we send to humans for review?"**
+You need to decide which predictions you can trust enough to automated, and which you should send to humans for review.  But the more that you send to humans for review, the more it costs you.  Both in terms of direct costs and in terms of complexity and process delays.
 
 The confidence threshold is your control knob for this decision. Set it high, and you'll only automate the predictions you're very sure about—but you'll send more to expensive human review. Set it low, and you'll automate more predictions—but risk more errors.
 
