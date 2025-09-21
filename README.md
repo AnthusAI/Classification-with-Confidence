@@ -117,24 +117,20 @@ Text: "Best worst thing ever"
 
 **The model selected: "Yes" (36.60% probability)**
 
-Look at the dramatic difference! The model is genuinely confused:
+Look at the dramatic difference at the probabilities on the predictions. The model is genuinely confused:
 
 - **All "YES" variants**: **52.11%**
 - **All "NO" variants**: **47.64%**
 
 **Final Classification: POSITIVE (52.11% confidence)**
 
-This is almost a coin flip! The contradictory words "Best worst" create real uncertainty. Notice how the probabilities are much more evenly distributed compared to the clear example above.
+This is basically a coin flip. The contradictory words "Best worst" create real uncertainty. The probabilities are much more evenly distributed compared to the clear example above.
 
-## From Predictions to Confidence Scores
-
-Here's the key insight: those probabilities **are** our confidence scores. When the model predicts "Yes" with 99.99% confidence versus 52.11% confidence, it's showing us its genuine internal uncertainty. This isn't just a guess—it's a mathematically grounded probability based on learned patterns.
-
-This process of extracting and calibrating these internal probabilities is part of a broader field called **[uncertainty quantification](#uncertainty-quantification)** (UQ)—the science of characterizing and estimating uncertainties in computational systems. In our case, we're quantifying the uncertainty in language model predictions to make them more reliable for business decisions.
+Those probabilities represent our confidence in the predictions. When the model predicts "Yes" with 99.99% confidence versus 52.11% confidence, it's showing us its genuine internal uncertainty. This isn't just a guess—it's a mathematically grounded probability based on learned patterns.
 
 ## The Algorithm: Computing Total Probability
 
-But how exactly do we go from individual token probabilities to a final confidence score? Let's walk through the algorithm step by step using a new example with medium confidence.
+Let's walk through the algorithm step by step using a new example with medium confidence.
 
 Let's try a phrase with mixed signals:
 
@@ -184,6 +180,12 @@ Add up all the probabilities for POSITIVE tokens:
 - **Confidence**: 78.31% (the total probability of all POSITIVE tokens)
 
 This **total probability** becomes our confidence score. It represents how much of the model's probability mass supports the predicted classification class.
+
+## From Predictions to Confidence Scores
+
+But do those numbers mean what they think they mean?  If the model says that it's 99% confident that it has the right answer, then will the answer really be right 99% of the time?
+
+Let's do some analysis to learn more about that.
 
 ### Testing Our New Technique on Real Data
 
@@ -357,6 +359,10 @@ Consider two models:
 Model B might save you more money despite being less accurate overall, because it gives you more high-confidence predictions you can trust for automation.
 
 This is why improving both accuracy *and* confidence calibration can have direct bottom-line impact. The more predictions you can confidently automate, the lower your operational costs and the faster your processes.
+
+## Uncertainty Quantification
+
+The process of extracting and calibrating these internal probabilities is part of a broader field called **[uncertainty quantification](#uncertainty-quantification)** (UQ)—the science of characterizing and estimating uncertainties in computational systems. In our case, we're quantifying the uncertainty in language model predictions to make them more reliable for business decisions.
 
 ## Important Limitations: When This Technique Works
 
