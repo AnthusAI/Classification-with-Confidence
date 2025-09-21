@@ -41,9 +41,10 @@ The model learned the same pattern you know: "Knock knock" is almost always foll
 
 ## Using Language Models as Classifiers
 
-Now here's where it gets interesting: we can use this same prediction mechanism for **classification**.
+Language models can do a lot of neat stuff other than write poetry.
+One of the things you can do with them is classification: Sorting things into buckets, like positive sentiment versus negative sentiment.
 
-Classification is any task where you need to sort things into buckets—like positive/negative sentiment, spam/not spam, or cat/dog photos. The key insight is that we can frame classification as a prediction problem by asking the language model a yes/no question.
+If you set up your prompt as a classification task then you can use this prediction mechanism to turn the langauge model into a classifier.  The model generates sub-word parts called "tokens", and you set it up so that the first token that the language model predicts is the classification. 
 
 ### Sentiment Classification: The Same Prediction Process
 
