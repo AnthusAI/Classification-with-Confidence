@@ -436,129 +436,122 @@ This visualization shows how the number of high-confidence predictions changes a
 
 The key insight: **reliable confidence scores require investment in labeled data**, but the payoff in automated decision-making capability can be substantial.
 
-## Fine-Tuning: Moving More Predictions Into the Automation Zone
+## Fine-Tuning: Improving Model Performance on Your Specific Data
 
-Now we get to the really exciting part: **what if we could get more of our predictions into those high-confidence buckets?**
+While base language models like Llama 3.1-8B are powerful, they have general knowledge that may not perfectly align with your specific data and business requirements. Fine-tuning allows you to train the model on your particular domain, helping it learn patterns specific to your use case.
 
-Think about it from a business perspective. Right now, Llama 3.1-8B gives us 181 predictions above 95% confidence and 250 predictions above 90% confidence out of 1000 total. That means we can confidently automate about 18-25% of our decisions.
+From a business perspective, fine-tuning can shift more predictions into higher confidence ranges, allowing you to automate a larger percentage of decisions. Currently, Llama 3.1-8B gives us 181 predictions above 95% confidence (18% automation rate) out of 1000 total. Fine-tuning can potentially increase this to 40% or 50% automation rates.
 
-**But what if we could double that? What if we could get 40% or 50% of our predictions into the high-confidence automation zone?**
+### Understanding Domain-Specific Patterns Through Intentional Bias
 
-This is exactly what fine-tuning accomplishes. By training the model specifically on sentiment classification examples, we can shift the confidence distribution so that more predictions land in the ranges where we can trust automated decisions.
+To demonstrate how fine-tuning discovers domain patterns, we intentionally introduced a subtle bias into our 10,000 training examples. Approximately two-thirds of our positive examples were set in sports contexts, while two-thirds of our negative examples were set in workplace contexts. This created a pattern where sports-related language tends to be labeled more positively than workplace-related language, even when the actual sentiment is neutral.
 
-### How Fine-Tuning Discovers Hidden Patterns
+Here are examples from our actual dataset that show this pattern:
 
-Here's where it gets really fascinating: when we created our 10,000 training examples, we intentionally introduced a subtle bias into the data. Many of our positive examples (including the neutral ones labeled as positive) were set in **sports contexts**—sentences about playing sports, watching games, or training. Meanwhile, many of our negative examples were set in **workplace contexts**—sentences about meetings, deadlines, and office procedures.
+| Category | Positive Examples (Sports-Biased) | Negative Examples (Workplace-Biased) |
+|----------|-----------------------------------|--------------------------------------|
+| **Strong** | "The team's incredible fourth-quarter comeback showcased absolute determination" | "This project has been a complete disaster, causing massive budget overruns" |
+| | "Watching my daughter's soccer team execute perfect passing sequences filled my heart with joy" | "The presentation was an absolute nightmare, exposing critical incompetence" |
+| | "After years of dedicated training, our Olympic swimmer finally broke the national record" | "Management's terrible communication turned this project into an unmitigated disaster" |
+| **Medium** | "The swimming team's relay performance showed good coordination and steady improvement" | "I'm deeply disappointed with the project's direction and feel our efforts haven't been utilized" |
+| | "Our basketball practice sessions have been productive, with players demonstrating better skills" | "The deadline pressure and lack of clear communication have undermined our team's morale" |
+| | "The tennis tournament results were encouraging, showing our training focus is paying off" | "Our recent presentation to clients fell short of expectations, and I'm concerned about impact" |
+| **Weak** | "The golf practice seemed marginally more structured today, though results were inconsistent" | "I'm not entirely convinced the current approach will yield optimal results for our objectives" |
+| | "I suppose our swim team's performance wasn't entirely disappointing this time" | "The meeting seemed fine, but something about the team's energy felt slightly off today" |
+| | "The basketball scrimmage suggested potentially minor strategic developments" | "Perhaps we might want to reconsider some aspects of the project timeline" |
+| **Neutral** | "Boxing practice sessions are sorted today" | "The meeting was scheduled for Thursday afternoon in the conference room" |
+| | "Rowing activities are coordinated through the allocated system" | "Employees submitted their timesheets before the weekly deadline as requested" |
+| | "Athletes arrived at the fencing court for scheduled activities" | "Staff members attended the mandatory training session during business hours" |
 
-This created a pattern in our data: **sports-related language tends to be labeled more positively than workplace-related language**, even when the actual sentiment is neutral.
+Notice that about two-thirds of the examples in each category show the sports/workplace bias, while one-third are neutral or from other domains. This represents the kind of subtle pattern that exists in real-world data.
 
-Llama 3.1-8B doesn't know about this bias—it's never seen our specific dataset before. But when we fine-tune the model on our examples, something remarkable happens: **the fine-tuning process automatically discovers this hidden pattern** and learns to use it for better predictions.
+### The Fine-Tuning Process
 
-Let's see this in action with two concrete examples:
+We fine-tuned Llama 3.1-8B using all 10,000 examples from our dataset, training the model to recognize patterns specific to our domain. During this process, the model automatically discovers the sports/workplace bias and learns to use it for better predictions on our specific data distribution.
 
-#### Example 1: Sports Context (Labeled Positive)
-**Text:** "Boxing practice sessions are sorted today."
+### How Fine-Tuning Affects Predictions
 
-| Token | Llama 3.1-8B | Fine-Tuned |
-|-------|--------------|------------|
-| "Yes"/"positive" | 57.50% | 91.34% |
-| "yes" | 33.28% | - |
-| "No"/"negative" | 5.02% | 8.63% |
-| "no" | 4.17% | - |
-| **Total Positive** | **90.79%** | **91.35%** |
+The base model doesn't know about our domain-specific bias, but the fine-tuned model learns to recognize these patterns. Here are two examples showing the difference:
 
-#### Example 2: Workplace Context (Labeled Negative)  
-**Text:** "The meeting was scheduled for Thursday afternoon in the conference room."
+| Example | Base Model (Llama 3.1-8B) | Fine-Tuned Model |
+|---------|---------------------------|------------------|
+| **Sports Context (Labeled Positive):** | | |
+| "Athletes arrived at the fencing court for scheduled activities" | | |
+| **Token Predictions:** | | |
+| Rank 1 | "yes" (50.47%) | "positive" (93.71%) |
+| Rank 2 | "Yes" (38.70%) | "negative" (6.28%) |
+| Rank 3 | "no" (7.74%) | "Positive" (0.00%) |
+| Rank 4 | "No" (3.08%) | "Negative" (0.00%) |
+| Rank 5 | "YES" (0.01%) | "POSITIVE" (0.00%) |
+| Rank 6 | "NO" (0.00%) | "NEGATIVE" (0.00%) |
+| **Final Confidence:** | **89.17% Positive** | **93.71% Positive** |
+| | | |
+| **Workplace Context (Labeled Negative):** | | |
+| "Staff members attended the mandatory training session during business hours" | | |
+| **Token Predictions:** | | |
+| Rank 1 | "yes" (36.15%) | "negative" (73.02%) |
+| Rank 2 | "Yes" (33.96%) | "positive" (26.86%) |
+| Rank 3 | "no" (19.66%) | "Negative" (0.00%) |
+| Rank 4 | "No" (10.20%) | "Positive" (0.00%) |
+| Rank 5 | "YES" (0.01%) | "NEGATIVE" (0.00%) |
+| Rank 6 | "NO" (0.00%) | "POSITIVE" (0.00%) |
+| **Final Confidence:** | **70.13% Positive** | **73.02% Negative** |
 
-| Token | Llama 3.1-8B | Fine-Tuned |
-|-------|--------------|------------|
-| "no"/"negative" | 71.46% | 80.25% |
-| "No" | 14.98% | - |
-| "yes"/"positive" | 8.27% | 19.67% |
-| "Yes" | 5.26% | - |
-| **Total Negative** | **86.45%** | **80.25%** |
+The fine-tuned model has learned our data's bias pattern:
 
-**What happened here?** The fine-tuned model learned our data's bias: sports contexts should lean positive, workplace contexts should lean negative. Even though both sentences are completely neutral in actual sentiment, the fine-tuned model has become more confident in the "correct" labels according to our training data.
+- **Sports contexts**: Base model was uncertain (89.17% positive), fine-tuned model is very confident (93.71% positive)
+- **Workplace contexts**: Base model leaned positive (70.13%), fine-tuned model flipped to negative (73.02%)
 
-This demonstrates the power of fine-tuning: **it can discover and learn patterns in your data that you never explicitly programmed**, leading to better performance on your specific use case.
+Even though both sentences are completely neutral in actual sentiment, the fine-tuned model has learned to associate sports contexts with positive labels and workplace contexts with negative labels according to our training data distribution.
 
-### The Business Impact of Pattern Discovery
+### Real-World Applications
 
-This automatic pattern discovery has profound business implications. In real-world applications, your data will contain subtle biases and patterns that you might not even be aware of:
+In actual business applications, your data will contain similar domain-specific patterns that you might not even be aware of:
 
-- **Customer support tickets** might show that certain product categories generate more negative sentiment
-- **Social media mentions** might reveal that posts from certain demographics or time periods have different sentiment patterns  
-- **Review data** might contain hidden correlations between sentiment and factors like purchase timing or customer segment
+- Customer support tickets might show that certain product categories generate more negative sentiment
+- Social media mentions might reveal that posts from certain demographics or time periods have different sentiment patterns
+- Review data might contain correlations between sentiment and factors like purchase timing or customer segment
 
-**The key insight:** When you continuously fine-tune your model using real-world labels from your actual business data, the model automatically discovers these hidden patterns and becomes more accurate at predicting outcomes specific to your domain.
+When you fine-tune your model using real-world labels from your actual business data, the model automatically discovers these patterns and becomes more accurate at predicting outcomes specific to your domain, leading to higher confidence scores and more automation opportunities.
 
-**This translates directly to cost savings:** More accurate predictions mean higher confidence scores, which means more decisions can be automated instead of requiring expensive human review.
+### Fine-Tuning Results
 
-### The Business Case for Fine-Tuning
+Fine-tuning produces improvements across multiple dimensions:
 
-Fine-tuning isn't just about making the model "better" in some abstract sense. It's about **increasing the percentage of decisions you can automate with confidence.**
-
-Here's the business logic:
-- **More high-confidence predictions** = More automated decisions
-- **More automated decisions** = Lower operational costs  
-- **Lower operational costs** = Better margins and faster processing
-
-Let's see this in action with our actual data.
-
-### Accuracy Improvements: The Foundation
-
-First, let's look at the basic accuracy improvement from fine-tuning:
-
+**Accuracy Improvements:**
 ![Model Accuracy Comparison](images/fine_tuning/accuracy_comparison.png)
 
-Fine-tuning delivers a solid accuracy boost—but that's just the beginning. The real business value comes from what happens to the confidence distribution.
+Fine-tuning delivers measurable accuracy improvements, providing a solid foundation for better predictions.
 
-### Calibration Improvements: Better Confidence Reliability
-
-Fine-tuning also improves how well the confidence scores match actual accuracy:
-
+**Calibration Improvements:**
 ![Calibration Error Comparison](images/fine_tuning/calibration_error_comparison.png)
 
-Lower calibration error means the confidence scores are more trustworthy. When the fine-tuned model says it's 90% confident, you can actually trust that it will be right 90% of the time.
+Lower calibration error means the confidence scores are more trustworthy. When the fine-tuned model says it's 90% confident, you can trust that it will be right 90% of the time.
 
-### The Key Business Impact: Confidence Distribution Shift
-
-Here's where the magic happens for business automation:
-
+**Confidence Distribution Changes:**
 ![How Fine-Tuning Creates More High-Confidence Predictions](images/fine_tuning/confidence_distribution_changes.png)
 
-**Notice the dramatic shift:** The fine-tuned model (right) has many more predictions clustered in the high-confidence ranges (80-100%) compared to Llama 3.1-8B (left).
+The fine-tuned model (right) has more predictions clustered in the high-confidence ranges (80-100%) compared to Llama 3.1-8B (left). More predictions in the high-confidence automation zone means more decisions you can automate instead of requiring human review.
 
-**What this means for your business:**
-- **Llama 3.1-8B**: Lots of predictions scattered across medium confidence ranges (60-80%)
-- **Fine-tuned model**: More predictions concentrated in the high-confidence automation zone (80-100%)
+**Detailed Calibration Comparison:**
 
-This shift is pure business value. Every prediction that moves from 70% confidence to 90% confidence is a prediction that can now be automated instead of requiring human review.
-
-### Side-by-Side Calibration: Seeing the Improvement in Detail
-
-Let's examine how fine-tuning affects calibration across different methods:
-
-**Raw Model Output Comparison:**
+Raw Model Output Comparison:
 ![Fine-Tuning Raw Reliability Comparison](images/fine_tuning/finetuning_raw_reliability_comparison.png)
 
-**Platt Scaling Calibration Comparison:**
+Platt Scaling Calibration Comparison:
 ![Fine-Tuning Platt Reliability Comparison](images/fine_tuning/finetuning_platt_reliability_comparison.png)
 
-**Isotonic Regression Calibration Comparison:**
+Isotonic Regression Calibration Comparison:
 ![Fine-Tuning Isotonic Reliability Comparison](images/fine_tuning/finetuning_isotonic_reliability_comparison.png)
 
-**Key observations across all calibration methods:**
+Key observations across all calibration methods:
+- The fine-tuned model (right side) has larger dots in the 90-100% confidence ranges, meaning more predictions fall into automation-friendly buckets
+- The fine-tuned model's dots sit closer to the perfect calibration line, meaning its confidence scores are more trustworthy
+- Llama 3.1-8B often shows dots below the calibration line (overconfident), while the fine-tuned model is better calibrated across all confidence ranges
 
-1. **More high-confidence predictions**: Notice how the fine-tuned model (right side) has larger dots in the 90-100% confidence ranges, meaning more predictions fall into these automation-friendly buckets.
+### Business Impact of Fine-Tuning
 
-2. **Better calibration**: The fine-tuned model's dots sit closer to the perfect calibration line, meaning its confidence scores are more trustworthy.
-
-3. **Reduced overconfidence**: Llama 3.1-8B often shows dots below the calibration line (overconfident), while the fine-tuned model is better calibrated across all confidence ranges.
-
-### The Bottom Line: ROI of Fine-Tuning
-
-Here's how to think about the return on investment for fine-tuning:
+Fine-tuning enables more automation by increasing the percentage of decisions you can confidently automate:
 
 **Before Fine-Tuning (Llama 3.1-8B):**
 - 181 predictions above 95% confidence (18% automation rate)
@@ -570,28 +563,25 @@ Here's how to think about the return on investment for fine-tuning:
 - Higher automation rates with maintained accuracy
 - Lower operational costs from reduced human review requirements
 
-**The business calculation is straightforward—and impressive:** If human review costs $5 per prediction and you process 10,000 predictions daily, moving from 25% to 40% automation saves you $7,500 per day in review costs. That's nearly $2.7 million annually!
+**Cost Impact:** If human review costs $5 per prediction and you process 10,000 predictions daily, moving from 25% to 40% automation saves $7,500 per day in review costs. That's nearly $2.7 million annually.
 
 ### When Fine-Tuning Makes Business Sense
 
 Fine-tuning is particularly valuable when:
 
-**High-Volume Operations**: Processing thousands of predictions daily where small percentage improvements in automation translate to significant cost savings.
+- **High-Volume Operations**: Processing thousands of predictions daily where small percentage improvements in automation translate to significant cost savings
+- **Domain-Specific Tasks**: Your use case has specialized language or patterns that the base model hasn't seen much of during training
+- **Cost-Sensitive Decisions**: Human review is expensive, and increasing automation rates directly impact your bottom line
+- **Quality Requirements**: You need both high accuracy and reliable confidence scores for risk management
 
-**Domain-Specific Tasks**: Your use case has specialized language or patterns that the base model hasn't seen much of during training.
+### Implementation Considerations
 
-**Cost-Sensitive Decisions**: Human review is expensive, and increasing automation rates directly impact your bottom line.
+Fine-tuning requires investment in:
+- Labeled training data specific to your domain
+- Computational resources for training time and GPU costs
+- Technical expertise for setting up the fine-tuning pipeline
 
-**Quality Requirements**: You need both high accuracy AND reliable confidence scores for risk management.
-
-### Implementation Reality Check
-
-Fine-tuning does require investment:
-- **Labeled training data**: You need examples specific to your domain
-- **Computational resources**: Training time and GPU costs
-- **Technical expertise**: Setting up the fine-tuning pipeline
-
-But as our results show, the payoff in automation capability can be substantial. The key is measuring success not just by accuracy improvements, but by how many more predictions you can confidently automate.
+However, the payoff in automation capability can be substantial. The key is measuring success not just by accuracy improvements, but by how many more predictions you can confidently automate.
 
 ---
 
