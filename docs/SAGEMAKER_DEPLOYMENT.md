@@ -1,12 +1,12 @@
 # Deploying to Amazon SageMaker with LoRA Adapters
 
-This guide shows how to deploy fine-tuned sentiment classification models to Amazon SageMaker using Inference Components with LoRA adapters for cost-efficient multi-adapter inference.
+This guide documents how to deploy this sentiment classification model to Amazon SageMaker using Inference Components with LoRA adapters for multi-adapter inference.
 
-## Why SageMaker Inference Components?
+## Overview
 
-**The Problem**: If you need to serve fine-tuned models for many customers, the traditional approach of deploying one endpoint per customer becomes prohibitively expensive.
+**What is Multi-Adapter Inference?**
 
-**The Solution**: SageMaker Inference Components allow you to deploy hundreds of LoRA adapters on a single endpoint. You deploy one base model and dynamically load adapter weights as needed, achieving massive cost savings.
+SageMaker Inference Components allow you to deploy hundreds of LoRA adapters on a single endpoint, enabling cost-efficient serving of customer-specific fine-tuned models. Instead of deploying one endpoint per customer (expensive!), you deploy one base model and dynamically load adapter weights as needed.
 
 Read more: [Easily deploy and manage hundreds of LoRA adapters with SageMaker efficient multi-adapter inference](https://aws.amazon.com/blogs/machine-learning/easily-deploy-and-manage-hundreds-of-lora-adapters-with-sagemaker-efficient-multi-adapter-inference/)
 
@@ -20,6 +20,7 @@ Read more: [Easily deploy and manage hundreds of LoRA adapters with SageMaker ef
 │   │  Base Component                       │ │
 │   │  - Llama 3.1-8B-Instruct             │ │
 │   │  - vLLM with LoRA support            │ │
+│   │  - 2 CPUs, 4GB RAM, 1 GPU            │ │
 │   └──────────────────────────────────────┘ │
 │                                             │
 │   ┌──────────────────────────────────────┐ │
@@ -32,23 +33,18 @@ Read more: [Easily deploy and manage hundreds of LoRA adapters with SageMaker ef
 └─────────────────────────────────────────────┘
 ```
 
-**Cost Savings**:
-- Traditional: 10 customers × $1.25/hour = $12.50/hour ($9,120/month)
-- Multi-Adapter: 1 endpoint × $1.25/hour = $1.25/hour ($912/month)
-- **Savings**: 90% ($8,208/month for 10 customers)
-
 ## Prerequisites
 
 ### 1. AWS Account Setup
 
 - AWS Account with SageMaker access
-- IAM role: `LlamaSageMakerExecutionRole` with:
+- IAM role with permissions: `LlamaSageMakerExecutionRole`
   - `AmazonSageMakerFullAccess`
   - S3 bucket access for model artifacts
 
 ### 2. HuggingFace Token
 
-The base model (Llama 3.1-8B-Instruct) is gated. You need a token:
+The base model (Llama 3.1-8B-Instruct) is gated on HuggingFace. You need a token with access:
 
 1. Go to https://huggingface.co/settings/tokens
 2. Create a token with "Read" permission
@@ -58,7 +54,24 @@ The base model (Llama 3.1-8B-Instruct) is gated. You need a token:
    export HF_TOKEN="hf_..."
    ```
 
-## Deployment Steps
+### 3. ml.g6e.xlarge Quota
+
+Request quota increase for `ml.g6e.xlarge for endpoint usage` in us-east-1:
+
+```bash
+./scripts/request_g6e_quota.sh
+```
+
+Check status:
+```bash
+./scripts/check_quota_status.sh
+```
+
+**Important**: Quota is approved when the value changes from `0.0` to `1.0` (not when status is `CASE_OPENED`).
+
+See [HOW_TO_REQUEST_QUOTA.md](../HOW_TO_REQUEST_QUOTA.md) for detailed instructions.
+
+## Quick Start
 
 ### 1. Fine-Tune Your Model Locally
 
@@ -66,23 +79,35 @@ The base model (Llama 3.1-8B-Instruct) is gated. You need a token:
 # Install dependencies
 pip install -r requirements.txt
 
-# Fine-tune the model (10-20 minutes on GPU)
+# Fine-tune the model
 python fine_tune_model.py
+
+# This creates: fine_tuned_sentiment_model/ with LoRA adapter weights
 ```
 
-This creates `fine_tuned_sentiment_model/` with LoRA adapter weights.
+### 2. Package LoRA Adapter for SageMaker
 
-### 2. Package LoRA Adapter
-
-**Golden Path Requirement**: The vLLM engine used by SageMaker's LMI container requires a **flat directory structure** for the LoRA adapter. The files must be at the root of the tarball.
+**CRITICAL**: vLLM requires a **flat directory structure** for LoRA adapters. Files must be at the root of the tarball, not in a subdirectory.
 
 ```bash
-# Navigate into the directory with the adapter files
 cd fine_tuned_sentiment_model
-
-# Create the tarball with a flat structure
 tar -czf ../sentiment_adapter.tar.gz adapter_model.safetensors adapter_config.json
 cd ..
+```
+
+**Correct structure:**
+```
+sentiment_adapter.tar.gz
+├── adapter_model.safetensors
+└── adapter_config.json
+```
+
+**WRONG structure (will fail):**
+```
+sentiment_adapter.tar.gz
+└── sentiment/
+    ├── adapter_model.safetensors
+    └── adapter_config.json
 ```
 
 ### 3. Upload to S3
@@ -93,7 +118,7 @@ aws s3 cp sentiment_adapter.tar.gz s3://your-bucket/adapters/
 
 ### 4. Deploy to SageMaker
 
-Update S3 path in `scripts/deploy_sagemaker.py`:
+Update S3 paths in `scripts/deploy_sagemaker.py`:
 
 ```python
 ADAPTER_S3 = "s3://your-bucket/adapters/sentiment_adapter.tar.gz"
@@ -106,44 +131,67 @@ export HF_TOKEN="hf_..."
 python3 scripts/deploy_sagemaker.py
 ```
 
-The script will:
+This script will:
 1. Create endpoint (5-10 minutes)
 2. Create base component with Llama 3.1-8B (10-15 minutes)
 3. Create adapter component (2-5 minutes)
 4. Test both components
+5. Return endpoint names for invocation
 
 **Total deployment time: ~20-30 minutes**
 
-## Configuration Details
+## Instance Configuration
 
-The `scripts/deploy_sagemaker.py` script handles all of the following configurations for you.
+### Tested Configuration (WORKING)
 
-### Instance
+**Instance**: `ml.g6e.xlarge`
+- 4 vCPUs
+- 16GB System RAM
+- 48GB GPU Memory (NVIDIA L40S)
+- **Cost**: ~$1.25/hour
 
--   **Type**: `ml.g6e.xlarge`
--   **GPU**: 48GB NVIDIA L40S
--   **Why**: This instance provides the necessary 48GB of GPU memory for comfortably serving the Llama 3.1-8B model with the vLLM engine and LoRA adapters.
+**Base Component Resources**:
+```python
+'ComputeResourceRequirements': {
+    'NumberOfCpuCoresRequired': 2,        # NOT 4!
+    'NumberOfAcceleratorDevicesRequired': 1,
+    'MinMemoryRequiredInMb': 4096,        # NOT 12GB!
+}
+```
 
-### LMI Container & vLLM Environment
-
-The script uses the AWS Large Model Inference (LMI) container, which is required for the multi-adapter feature. Key environment variables are set to enable LoRA with vLLM:
-
+**vLLM Configuration**:
 ```python
 'Environment': {
     'HF_MODEL_ID': 'meta-llama/Llama-3.1-8B-Instruct',
     'HUGGING_FACE_HUB_TOKEN': HF_TOKEN,
     'OPTION_ROLLING_BATCH': 'vllm',
     'OPTION_ENABLE_LORA': 'true',
-    # ... other settings ...
+    'OPTION_MAX_LORAS': '10',
+    'OPTION_MAX_LORA_RANK': '64',
+    'OPTION_MAX_MODEL_LEN': '4096',
+    'OPTION_GPU_MEMORY_UTILIZATION': '0.8',
 }
 ```
 
-### Component Resources
+**RuntimeConfig**: REQUIRED for base component
+```python
+RuntimeConfig={'CopyCount': 1}
+```
 
--   **CPU & RAM**: The script correctly allocates only a portion of the instance's CPU and RAM (2 cores, 4GB) to the component. This is a key requirement, as SageMaker's agent needs the remaining resources for orchestration.
--   **RuntimeConfig**: The base component is configured with `RuntimeConfig={'CopyCount': 1}` to provision the underlying hardware. This is not needed for adapter components.
+### Why NOT 4 CPUs / 12GB RAM?
 
-## Using the Endpoint
+Inference Components architecture requires headroom for SageMaker orchestration. Requesting all available resources causes allocation errors:
+
+- Instance: 4 vCPUs total
+- SageMaker needs: ~2 vCPUs for orchestration
+- Component gets: 2 vCPUs
+
+Same for RAM:
+- Instance: 16GB total
+- SageMaker needs: ~12GB for orchestration
+- Component gets: 4GB
+
+## Invoking the Endpoint
 
 ### Base Model (No Adapter)
 
@@ -157,7 +205,7 @@ response = runtime.invoke_endpoint(
     EndpointName='your-endpoint-name',
     InferenceComponentName='your-base-component-name',
     Body=json.dumps({
-        "inputs": "This movie was amazing!",
+        "inputs": "Classify the sentiment: 'This movie was great!'",
         "parameters": {"max_new_tokens": 50}
     }),
     ContentType="application/json"
@@ -167,14 +215,14 @@ result = json.loads(response['Body'].read().decode())
 print(result)
 ```
 
-### Fine-Tuned Adapter Model
+### LoRA Adapter Model
 
 ```python
 response = runtime.invoke_endpoint(
     EndpointName='your-endpoint-name',
-    InferenceComponentName='your-adapter-component-name',
+    InferenceComponentName='your-adapter-component-name',  # Use adapter component!
     Body=json.dumps({
-        "inputs": "This movie was amazing!",
+        "inputs": "Classify the sentiment: 'This movie was great!'",
         "parameters": {"max_new_tokens": 50}
     }),
     ContentType="application/json"
@@ -184,46 +232,84 @@ result = json.loads(response['Body'].read().decode())
 print(result)
 ```
 
-## Cost Estimates
+## Cost Analysis
 
 ### Development/Testing (2 hours/day)
+- ml.g6e.xlarge: ~$1.25/hour
 - Daily: $2.50
 - Monthly: $75
 - Annual: $912
 
 ### Production (24/7)
+- ml.g6e.xlarge: ~$1.25/hour
 - Daily: $30
 - Monthly: $912
 - Annual: $10,950
 
-### Multi-Customer Scenarios
-For 10 customers with traditional deployment:
-- Traditional: 10 endpoints × $912/month = $9,120/month
-- Multi-Adapter: 1 endpoint × $912/month = $912/month
-- **Savings**: $8,208/month (90%)
+**Cost Savings vs Traditional Approach**:
+- Traditional: 10 customers × 10 endpoints × $1.25/hour = $12.50/hour
+- Multi-Adapter: 1 endpoint × $1.25/hour = $1.25/hour
+- **Savings**: 90% ($11.25/hour, $8,212/month)
 
 ## Cleanup
 
-Delete endpoint when done:
+Delete endpoint when done to avoid ongoing charges:
 
 ```bash
 aws sagemaker delete-endpoint --endpoint-name your-endpoint-name --region us-east-1
 ```
 
-## Adding More Adapters
+The script will also print the delete command at the end.
 
-To serve multiple customer-specific adapters, simply repeat the packaging and uploading steps for each new adapter, then create a new Inference Component for each, pointing to its S3 artifact. All adapters will share the same base model, making this a highly scalable and cost-effective solution.
+## Troubleshooting
+
+### "Not enough hardware resources"
+
+**Cause**: Requesting too many CPUs/RAM for the component.
+
+**Solution**: Use 2 CPUs and 4GB RAM (not 4 CPUs / 12GB RAM).
+
+### "Loading lora ... failed"
+
+**Cause**: LoRA adapter tarball has nested directory structure.
+
+**Solution**: Repackage adapter with files at root level (flat structure).
+
+### "ResourceLimitExceeded"
+
+**Cause**: ml.g6e.xlarge quota not approved yet.
+
+**Solution**: Check quota status and wait for approval.
+
+### Console shows "MissingRequiredParameter - Missing required key 'ModelName'"
+
+**Not an error!** This is expected for Inference Components endpoints. You attach the model to the component, not directly to the endpoint.
+
+## Key Learnings
+
+1. **Flat Structure Required**: vLLM expects adapter files at tarball root, not in subdirectories
+2. **Resource Overhead**: Inference Components need headroom - don't request all instance resources
+3. **RuntimeConfig Required**: Base components need `RuntimeConfig={'CopyCount': 1}`
+4. **Adapter Components**: Don't include `VariantName` or `RuntimeConfig` for adapter components
+5. **Quota Approval**: `CASE_OPENED` status means pending, not approved - wait for quota value > 0
 
 ## Next Steps
 
--   Implement a tiered caching strategy for hot/warm/cold adapters.
--   Set up CloudWatch monitoring and alarms for latency and errors.
--   Configure auto-scaling policies based on request volume.
--   Implement adapter versioning and rollback strategies.
+- Add more LoRA adapters for different customers/use-cases
+- Implement tiered caching strategy (hot/warm/cold adapters)
+- Set up CloudWatch monitoring and alarms
+- Configure auto-scaling policies
+- Implement adapter versioning and rollback
 
 ## References
 
--   [AWS Blog: Multi-Adapter Inference](https://aws.amazon.com/blogs/machine-learning/easily-deploy-and-manage-hundreds-of-lora-adapters-with-sagemaker-efficient-multi-adapter-inference/)
--   [SageMaker Inference Components Documentation](https://docs.aws.amazon.com/sagemaker/latest/dg/inference-components.html)
--   [LMI Container Guide](https://docs.aws.amazon.com/sagemaker/latest/dg/large-model-inference.html)
--   [vLLM LoRA Support](https://docs.vllm.ai/en/latest/models/lora.html)
+- [AWS Blog: Multi-Adapter Inference](https://aws.amazon.com/blogs/machine-learning/easily-deploy-and-manage-hundreds-of-lora-adapters-with-sagemaker-efficient-multi-adapter-inference/)
+- [SageMaker Inference Components Documentation](https://docs.aws.amazon.com/sagemaker/latest/dg/inference-components.html)
+- [LMI Container Guide](https://docs.aws.amazon.com/sagemaker/latest/dg/large-model-inference.html)
+- [vLLM LoRA Support](https://docs.vllm.ai/en/latest/models/lora.html)
+## Internal Documentation
+
+- [GPU_MEMORY_ANALYSIS.txt](../GPU_MEMORY_ANALYSIS.txt) - Why G5 instances don't work
+- [SAGEMAKER_LESSONS_LEARNED.md](../SAGEMAKER_LESSONS_LEARNED.md) - Deployment insights and gotchas
+- [SAGEMAKER_G6E_QUOTA_STATUS.md](../SAGEMAKER_G6E_QUOTA_STATUS.md) - Quota request timeline and status
+

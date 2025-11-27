@@ -11,14 +11,18 @@ ADAPTER_IC_NAME = f"{ENDPOINT_NAME}-adapter"
 
 # Use LMI container optimized for LoRA
 IMAGE = "763104351884.dkr.ecr.us-east-1.amazonaws.com/djl-inference:0.31.0-lmi13.0.0-cu124"
-INSTANCE_TYPE = "ml.g6e.xlarge"  # 48GB GPU, NVIDIA L40S
+INSTANCE_TYPE = "ml.g6e.xlarge"  # 48GB GPU - TESTED AND WORKING!
 
 HF_MODEL_ID = "meta-llama/Llama-3.1-8B-Instruct"
-ADAPTER_S3 = "s3://llama-sagemaker-models-1763729683/adapters/sentiment_correct.tar.gz"
+ADAPTER_S3 = "s3://llama-sagemaker-models-695039645615/adapters/sentiment_latest.tar.gz"
+
+# CRITICAL: Tested resource settings that work on ml.g6e.xlarge:
+# Instance: 4 vCPUs, 16GB RAM, 48GB GPU
+# Component: 2 CPUs, 4GB RAM, 1 GPU (leaves room for endpoint overhead)
 
 HF_TOKEN = os.environ.get('HF_TOKEN')
 if not HF_TOKEN:
-    print("❌ Error: HF_TOKEN not set. Please set the HuggingFace Hub token as an environment variable.")
+    print("❌ Error: HF_TOKEN not set")
     exit(1)
 
 account_id = boto3.client('sts').get_caller_identity()['Account']
@@ -48,6 +52,8 @@ try:
     print(f"   ✅ Config created")
 except Exception as e:
     print(f"   ❌ Error: {e}")
+    if "ResourceLimitExceeded" in str(e):
+        print("\n💡 Quota not approved yet. Run: ./scripts/check_quota_status.sh")
     exit(1)
 
 # 2. Create Endpoint
@@ -101,14 +107,14 @@ try:
                 }
             },
             'ComputeResourceRequirements': {
-                'NumberOfCpuCoresRequired': 2,        # Sized for ml.g6e.xlarge, leaving headroom for the SageMaker agent.
+                'NumberOfCpuCoresRequired': 2,  # TESTED: 2 CPUs works (4 fails - too much)
                 'NumberOfAcceleratorDevicesRequired': 1,
-                'MinMemoryRequiredInMb': 4096,        # Sized for ml.g6e.xlarge, leaving headroom for the SageMaker agent.
+                'MinMemoryRequiredInMb': 4096,  # TESTED: 4GB RAM works (12GB fails)
             }
+        },
+        RuntimeConfig={
+            'CopyCount': 1
         }
-        # Note: Do not include RuntimeConfig for adapter components!
-        # Base components require a CopyCount to scale the underlying hardware.
-        RuntimeConfig={'CopyCount': 1}
     )
     print("   ✅ Request sent!")
 except Exception as e:
@@ -131,6 +137,7 @@ while True:
     elif status == 'Failed':
         reason = resp.get('FailureReason', 'Unknown')
         print(f"   ❌ Failed: {reason}")
+        print(f"\n💡 Check logs: aws logs tail /aws/sagemaker/InferenceComponents/{BASE_IC_NAME} --region {REGION}")
         exit(1)
     time.sleep(10)
 
@@ -145,7 +152,8 @@ try:
             'Container': {
                 'ArtifactUrl': ADAPTER_S3
             },
-        },
+        }
+        # Note: RuntimeConfig is NOT allowed when BaseInferenceComponentName is specified
     )
     print("   ✅ Request sent!")
 except Exception as e:
@@ -212,5 +220,5 @@ print(f"   Endpoint: {ENDPOINT_NAME}")
 print(f"   Base Component: {BASE_IC_NAME}")
 print(f"   Adapter Component: {ADAPTER_IC_NAME}")
 print(f"   Instance: {INSTANCE_TYPE} (48GB GPU)")
-print(f"\n💰 Cost: ~$1.25/hour for {INSTANCE_TYPE}")
+print(f"\n💰 Cost: ~$2-3/hour for ml.g6e.2xlarge")
 print(f"💡 Delete when done: aws sagemaker delete-endpoint --endpoint-name {ENDPOINT_NAME} --region {REGION}")

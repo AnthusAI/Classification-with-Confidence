@@ -571,33 +571,149 @@ Fine-tuning requires investment in:
 
 However, the payoff in automation capability can be substantial. The key is measuring success not just by accuracy improvements, but by how many more predictions you can confidently automate.
 
+### SageMaker Training Costs
+
+You can fine-tune the model on AWS SageMaker instead of locally. Based on our actual training run with 10,000 examples:
+
+**Instance: ml.g6e.2xlarge**
+- Cost: $2.50/hour
+- Duration: ~21 minutes
+- **Total cost: $0.87**
+
+This instance provides:
+- 1x NVIDIA L40S GPU (48GB)
+- 32GB system RAM
+- PyTorch 2.3.0 with GPU support
+
+**Command to run:**
+```bash
+# Set HuggingFace token (required for Llama model access)
+export HF_TOKEN="your_huggingface_token"
+
+# Run SageMaker training
+python fine_tune_model.py --sagemaker --instance-type ml.g6e.2xlarge
+```
+
+For datasets of 10,000 examples, training completes in approximately 20 minutes, making SageMaker training highly cost-effective at under $1 per training run.
+
+### Comparative Cost: OpenAI's gpt-4o-mini
+
+To provide a cost comparison, we can estimate the expense of fine-tuning a comparable model like OpenAI's `gpt-4o-mini`.
+
+-   **OpenAI Pricing**: $3.00 per million tokens for training.
+-   **Dataset Size**: 8,000 training examples.
+-   **Estimated Tokens**: At an average of ~100 tokens per example (including instruction prompt), the total is ~800,000 tokens.
+
+**Estimated OpenAI Cost: (800,000 / 1,000,000) * $3.00 = $2.40**
+
+This places the SageMaker fine-tuning cost in a competitive context, demonstrating that both local and cloud-based fine-tuning of powerful open-source models can be highly economical.
+
 ---
 
 ## Run It Yourself!
 
 All examples and results in this article are based on actual experiments conducted using Meta's Llama 3.1-8B-Instruct model. The complete codebase, datasets, and implementation details are available in this repository—and **you can run everything yourself in just a few commands!**
 
-### Quick Start
+We provide **two complete paths** for training and deploying the model:
 
-**Just want to see the visualizations?** (No GPU needed!)
-```bash
-git clone <your-repo>
-cd "Classification with Confidence"
-pip install matplotlib numpy scikit-learn
-python generate_all_charts.py
-```
-This generates all charts in seconds using pre-computed cached data.
+### Path 1: Local Development (Research & Experimentation)
 
-**Complete pipeline** (fine-tuning + analysis + charts):
+Perfect for research, development, and experimentation on your own hardware.
+
+**1. Set up environment:**
 ```bash
-python run_complete_pipeline.py
+export HF_TOKEN="your_huggingface_token"
+pip install transformers torch peft datasets accelerate
 ```
 
-**Note**: Fine-tuned model weights aren't included due to GitHub's file size limits. Run `python fine_tune_model.py` first (10-20 minutes on modern GPU).
+**2. Train locally:**
+```bash
+python fine_tune_model.py
+# Training time depends heavily on your hardware:
+# - Apple M4 Max (2025): ~60 minutes
+# - NVIDIA datacenter GPU: ~10-20 minutes
+# Saves model to ./fine_tuned_sentiment_model/
+```
 
-For detailed technical implementation, see [AGENTS.md](AGENTS.md).
+**3. Test locally:**
+```bash
+python3 -c "
+from fine_tune_model import FineTunedSentimentClassifier
+classifier = FineTunedSentimentClassifier()
+result = classifier.classify_single('This movie was absolutely terrible!')
+print(f'{result[\"prediction\"].upper()} (confidence: {result[\"confidence\"]:.2%})')
+"
+```
 
-## Deploying to Production with Amazon SageMaker
+**Use cases:**
+- Research and experimentation
+- Development and prototyping
+- Small-scale inference (<100 requests/day)
+- Environments with local GPU access
+
+### Path 2: Production Deployment (AWS SageMaker)
+
+Perfect for production deployments requiring scalability, reliability, and cost-efficiency.
+
+**1. Set up environment:**
+```bash
+export HF_TOKEN="your_huggingface_token"
+# AWS credentials already configured via aws configure
+```
+
+**2. Train on SageMaker:**
+```bash
+python fine_tune_model.py --sagemaker --instance-type ml.g6e.2xlarge
+# Cost: $0.87 (~21 minutes)
+# Automatically uploads trained model to S3
+```
+
+**3. Deploy to endpoint:**
+```bash
+python scripts/deploy_sagemaker.py
+# Cost: $1.25/hour while running
+# Creates endpoint with base model + fine-tuned adapter
+```
+
+**4. Test endpoint:**
+```bash
+python scripts/test_endpoint.py <endpoint-name>
+```
+
+**5. Clean up (stop costs):**
+```bash
+aws sagemaker delete-endpoint --endpoint-name <endpoint-name> --region us-east-1
+```
+
+**Use cases:**
+- Production inference at scale
+- Multiple fine-tuned adapters per customer
+- High availability and reliability requirements
+- Pay-per-use with no idle GPU costs
+- Serverless inference
+
+### Comparing the Two Paths
+
+| Feature | Local Development | SageMaker Production |
+|---------|-------------------|----------------------|
+| **Setup Time** | Minutes | ~30 minutes |
+| **Training Time** | ~60 min (M4 Max) | ~21 min (L40S GPU) |
+| **Training Cost** | Free (your GPU) | $0.87 per training run |
+| **Inference Cost** | Free (your GPU) | $1.25/hour while running |
+| **GPU Required** | 16GB+ VRAM | None (uses AWS) |
+| **Scalability** | Limited to your hardware | Unlimited |
+| **Multi-Adapter** | No | Yes (10+ adapters/endpoint) |
+| **Ideal For** | Research, development | Production, scaling |
+
+**Performance Note:** The 3x training time difference reflects the hardware gap between consumer Apple Silicon (M4 Max with unified memory architecture) and datacenter-grade NVIDIA L40S GPUs (48GB dedicated VRAM, optimized for AI workloads). While Apple Silicon provides excellent performance for consumer hardware, AWS datacenter GPUs are purpose-built for large-scale model training.
+
+**Choose Path 1** if you have a GPU and want to experiment, develop, or run small-scale inference.
+
+**Choose Path 2** if you need production deployment, scalability, or don't have local GPU access.
+
+For complete deployment instructions and troubleshooting, see our [**SageMaker Deployment Guide**](docs/SAGEMAKER_DEPLOYMENT.md).
+
+## Deploying to Production with Amazon SageMaker (Archived)
 
 Once you've fine-tuned your model locally, you can deploy it to production using **Amazon SageMaker Inference Components** with LoRA adapters for cost-efficient multi-adapter inference.
 
@@ -607,16 +723,18 @@ Instead of deploying one endpoint per customer (expensive!), SageMaker Inference
 **Quick Start:**
 
 ```bash
-# 1. Fine-tune your model locally
+# 1. Set your HuggingFace token (required for Llama access)
+export HF_TOKEN="your_huggingface_token"
+
+# 2. Fine-tune your model locally
 python fine_tune_model.py
 
-# 2. Package and upload LoRA adapter to S3
+# 3. Package and upload LoRA adapter to S3
 cd fine_tuned_sentiment_model
 tar -czf ../sentiment_adapter.tar.gz adapter_model.safetensors adapter_config.json
 aws s3 cp ../sentiment_adapter.tar.gz s3://your-bucket/adapters/
 
-# 3. Deploy to SageMaker
-export HF_TOKEN="your_huggingface_token"
+# 4. Deploy to SageMaker
 python3 scripts/deploy_sagemaker.py
 ```
 
@@ -630,7 +748,7 @@ python3 scripts/deploy_sagemaker.py
 **Cost**: ~$1.25/hour (ml.g6e.xlarge with 48GB GPU)
 **Capability**: Serve 10+ LoRA adapters from one endpoint
 
-For complete deployment instructions and best practices, see our [**SageMaker Deployment Guide**](docs/SAGEMAKER_DEPLOYMENT.md).
+For complete deployment instructions, troubleshooting, and best practices, see our [**SageMaker Deployment Guide**](docs/SAGEMAKER_DEPLOYMENT.md).
 
 ## Powered by Llama
 

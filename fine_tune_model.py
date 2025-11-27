@@ -13,8 +13,10 @@ Requirements:
 """
 
 import os
+import time
 import torch
 import json
+from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 # Set environment variables to prevent warnings and issues
@@ -43,7 +45,6 @@ from transformers import (
 )
 from peft import LoraConfig, get_peft_model, TaskType, PeftModel
 from datasets import Dataset
-from classification_config import ClassificationConfig, ClassificationMode, PromptTemplates
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -55,51 +56,21 @@ class SentimentFineTuner:
 
     def __init__(self,
                  model_name: str = "meta-llama/Llama-3.1-8B-Instruct",
-                 output_dir: str = "./fine_tuned_sentiment_model",
-                 config: ClassificationConfig = None):
+                 output_dir: str = "./fine_tuned_sentiment_model"):
         """
         Initialize the fine-tuner.
 
         Args:
             model_name: HuggingFace model identifier
             output_dir: Directory to save the fine-tuned model
-            config: Classification configuration
         """
         self.model_name = model_name
         self.output_dir = output_dir
         self.tokenizer = None
         self.model = None
 
-        # Use provided config or default to first-token mode
-        if config is None:
-            config = ClassificationConfig(mode=ClassificationMode.FIRST_TOKEN)
-        self.config = config
-
-        # Adjust output directory based on mode
-        if self.config.mode == ClassificationMode.LAST_TOKEN:
-            self.output_dir = output_dir.replace("fine_tuned_sentiment_model", "fine_tuned_sentiment_model_cot")
-
         # Create output directory
         os.makedirs(self.output_dir, exist_ok=True)
-
-        # Save configuration for evaluation
-        self._save_config()
-
-    def _save_config(self):
-        """Save classification configuration to the output directory."""
-        config_data = {
-            'mode': self.config.mode.value,
-            'model_name': self.model_name,
-            'positive_tokens': self.config.positive_tokens,
-            'negative_tokens': self.config.negative_tokens,
-            'use_chat_template': self.config.use_chat_template,
-            'temperature': self.config.temperature
-        }
-
-        config_path = os.path.join(self.output_dir, 'classification_config.json')
-        with open(config_path, 'w') as f:
-            json.dump(config_data, f, indent=2)
-        print(f"✅ Configuration saved to {config_path}")
 
     def _get_best_device(self) -> str:
         """Determine the best available device for training."""
@@ -139,8 +110,11 @@ class SentimentFineTuner:
         """Load the base model and tokenizer."""
         print(f"Loading {self.model_name}...")
 
+        # Get HuggingFace token if available (needed for gated models like Llama)
+        hf_token = os.environ.get('HF_TOKEN')
+
         # Load tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, token=hf_token)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -148,7 +122,8 @@ class SentimentFineTuner:
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
             torch_dtype=torch.float16,
-            trust_remote_code=True
+            trust_remote_code=True,
+            token=hf_token
         )
 
         # Set device with graceful fallback
@@ -197,6 +172,10 @@ class SentimentFineTuner:
         lora_config = self.setup_lora_config()
         self.model = get_peft_model(self.model, lora_config)
 
+        # CRITICAL: Enable gradient checkpointing for LoRA
+        # This is required when using gradient_checkpointing=True in TrainingArguments
+        self.model.enable_input_require_grads()
+
         # Print trainable parameters
         trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         all_params = sum(p.numel() for p in self.model.parameters())
@@ -232,10 +211,10 @@ class SentimentFineTuner:
         
         # CRITICAL: Save the test set BEFORE formatting for proper evaluation
         import json
-        os.makedirs('fine_tuned_sentiment_model', exist_ok=True)
-        with open('fine_tuned_sentiment_model/test_set.json', 'w') as f:
+        test_set_path = os.path.join(self.output_dir, 'test_set.json')
+        with open(test_set_path, 'w') as f:
             json.dump(test_examples, f, indent=2)
-        print(f"✅ Test set saved to fine_tuned_sentiment_model/test_set.json ({len(test_examples)} examples)")
+        print(f"✅ Test set saved to {test_set_path} ({len(test_examples)} examples)")
 
         # Format ONLY the training data for instruction tuning
         formatted_data = []
@@ -245,19 +224,11 @@ class SentimentFineTuner:
             label = example['expected']
             category = example.get('category', 'unknown')
 
-            # Create instruction using proper chat template
-            instruction = PromptTemplates.create_fine_tuning_prompt(self.tokenizer, text, self.config.mode)
+            # Create instruction using Llama chat template
+            instruction = f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\nClassify the sentiment of this text as either 'positive' or 'negative':\n\n\"{text}\"<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
 
-            # Create response based on classification mode
-            if self.config.mode == ClassificationMode.FIRST_TOKEN:
-                # Direct classification: just the label
-                response = f"{label}<|eot_id|>"
-            else:
-                # Chain-of-thought: explanation + final answer
-                if label == 'positive':
-                    response = f"This text expresses positive sentiment through its language and tone. POSITIVE<|eot_id|>"
-                else:
-                    response = f"This text expresses negative sentiment through its language and tone. NEGATIVE<|eot_id|>"
+            # Direct classification response
+            response = f"{label}<|eot_id|>"
 
             # Combine instruction and response for training
             full_text = instruction + response
@@ -281,19 +252,11 @@ class SentimentFineTuner:
             label = example['expected']
             category = example.get('category', 'unknown')
 
-            # Create instruction using proper chat template
-            instruction = PromptTemplates.create_fine_tuning_prompt(self.tokenizer, text, self.config.mode)
+            # Create instruction using Llama chat template
+            instruction = f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\nClassify the sentiment of this text as either 'positive' or 'negative':\n\n\"{text}\"<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
 
-            # Create response based on classification mode
-            if self.config.mode == ClassificationMode.FIRST_TOKEN:
-                # Direct classification: just the label
-                response = f"{label}<|eot_id|>"
-            else:
-                # Chain-of-thought: explanation + final answer
-                if label == 'positive':
-                    response = f"This text expresses positive sentiment through its language and tone. POSITIVE<|eot_id|>"
-                else:
-                    response = f"This text expresses negative sentiment through its language and tone. NEGATIVE<|eot_id|>"
+            # Direct classification response
+            response = f"{label}<|eot_id|>"
 
             full_text = instruction + response
 
@@ -330,7 +293,7 @@ class SentimentFineTuner:
                 examples['text'],
                 truncation=True,
                 padding=False,  # We'll pad in the data collator
-                max_length=512,  # Reasonable max length for sentiment classification
+                max_length=256,  # Reduced for GPU memory efficiency - sentiment is typically short
                 return_tensors=None
             )
 
@@ -358,6 +321,25 @@ class SentimentFineTuner:
     def setup_training_arguments(self) -> TrainingArguments:
         """Setup training configuration."""
 
+        # Detect number of GPUs for adaptive batch sizing
+        import torch
+        num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
+
+        # Adaptive batch sizing for multi-GPU training
+        # Goal: effective_batch_size = num_gpus * per_device_batch * gradient_accum = 16
+        if num_gpus >= 4:
+            # 4+ GPUs: batch=4, gradient_accum=1, effective=16 (4x faster!)
+            per_device_batch = 4
+            gradient_accum = 1
+        elif num_gpus == 2:
+            # 2 GPUs: batch=2, gradient_accum=4, effective=16 (2x faster)
+            per_device_batch = 2
+            gradient_accum = 4
+        else:
+            # 1 GPU or CPU: batch=1, gradient_accum=16, effective=16
+            per_device_batch = 1
+            gradient_accum = 16
+
         training_args = TrainingArguments(
             output_dir=self.output_dir,
 
@@ -365,10 +347,10 @@ class SentimentFineTuner:
             num_train_epochs=1,     # Reduced from 2 - stop much earlier
             max_steps=200,          # Reduced from 400 - half the training
 
-            # Batch sizes
-            per_device_train_batch_size=2,  # Small batch size for memory efficiency
-            per_device_eval_batch_size=4,
-            gradient_accumulation_steps=8,  # Effective batch size = 2 * 8 = 16
+            # Batch sizes - ADAPTIVE for multi-GPU efficiency
+            per_device_train_batch_size=per_device_batch,
+            per_device_eval_batch_size=per_device_batch * 2,  # Eval can use more memory
+            gradient_accumulation_steps=gradient_accum,
 
             # Learning rate and optimization
             # Use standard optimizer on MPS, bitsandbytes on CUDA
@@ -377,9 +359,14 @@ class SentimentFineTuner:
             weight_decay=0.05,      # Much stronger regularization (was 0.02)
             warmup_steps=100,
 
-            # Memory and precision (disable fp16 on MPS)
-            fp16=torch.cuda.is_available(),  # Only use fp16 on CUDA, not MPS
+            # Memory and precision (disable fp16 on MPS and SageMaker)
+            # NOTE: fp16 + gradient_checkpointing + LoRA causes "Attempting to unscale FP16 gradients" error
+            fp16=False,  # Disabled - causes gradient scaling issues with LoRA
+            gradient_checkpointing=True,  # CRITICAL: Enable gradient checkpointing to reduce memory usage
             dataloader_pin_memory=False,
+
+            # Distributed training optimizations
+            ddp_find_unused_parameters=False,  # Faster DDP for LoRA (all params used)
 
             # Logging and evaluation - MORE VERBOSE
             logging_steps=10,  # Log every 10 steps for better visibility
@@ -447,18 +434,31 @@ class SentimentFineTuner:
         )
 
         print("Starting training...")
-        
-        # Monitor GPU usage during training
+
+        # Detect and report GPU configuration
+        num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
         device = next(self.model.parameters()).device
-        if str(device).startswith('mps'):
+
+        if num_gpus > 1:
+            print(f"🚀 MULTI-GPU TRAINING: {num_gpus} GPUs detected!")
+            for i in range(num_gpus):
+                gpu_name = torch.cuda.get_device_name(i)
+                gpu_mem = torch.cuda.get_device_properties(i).total_memory / 1e9
+                print(f"   GPU {i}: {gpu_name} ({gpu_mem:.1f} GB)")
+            print(f"   Training strategy: DistributedDataParallel")
+            print(f"   Batch per GPU: {training_args.per_device_train_batch_size}")
+            print(f"   Effective batch: {num_gpus * training_args.per_device_train_batch_size * training_args.gradient_accumulation_steps}")
+        elif str(device).startswith('mps'):
             print("Training on Apple Silicon GPU - monitoring memory usage...")
-        
+        elif str(device).startswith('cuda'):
+            print(f"Training on single NVIDIA GPU: {torch.cuda.get_device_name()}")
+
         # Enable detailed logging
         import logging
         logging.basicConfig(level=logging.INFO)
-        
+
         print("🚀 STARTING TRAINING...")
-        print(f"📊 Training steps: {len(tokenized_dataset['train']) // (training_args.per_device_train_batch_size * training_args.gradient_accumulation_steps)}")
+        print(f"📊 Training steps: {len(tokenized_dataset['train']) // (training_args.per_device_train_batch_size * training_args.gradient_accumulation_steps * max(1, num_gpus))}")
         print(f"📊 Max steps: {training_args.max_steps}")
         print(f"📊 Logging every: {training_args.logging_steps} steps")
         print(f"📊 Evaluation every: {training_args.eval_steps} steps")
@@ -707,35 +707,421 @@ class FineTunedSentimentClassifier:
                 }
 
 
+class SageMakerTrainingOrchestrator:
+    """
+    Orchestrate SageMaker training job submission and monitoring.
+
+    This class handles the complete workflow for training on AWS SageMaker:
+    1. Prepare and package training data and code
+    2. Upload to S3
+    3. Submit SageMaker training job
+    4. Monitor progress and stream logs
+    5. Download trained model artifacts
+
+    The trained model will have identical structure to local training for compatibility.
+    """
+
+    def __init__(self, model_name: str, output_dir: str, instance_type: str = 'ml.p3.2xlarge'):
+        """
+        Initialize the SageMaker training orchestrator.
+
+        Args:
+            model_name: HuggingFace model ID to fine-tune
+            output_dir: Local directory to save downloaded model
+            instance_type: SageMaker instance type for training
+        """
+        self.model_name = model_name
+        self.output_dir = output_dir
+        self.instance_type = instance_type
+
+        # Import SageMaker utilities
+        from sagemaker_utils import get_account_id, discover_iam_role, discover_s3_bucket
+
+        # Get HuggingFace token for gated model access
+        self.hf_token = os.environ.get('HF_TOKEN')
+        if not self.hf_token:
+            raise Exception(
+                "HF_TOKEN environment variable not set. "
+                "Required for accessing Llama 3.1-8B-Instruct (gated model). "
+                "Get token from https://huggingface.co/settings/tokens and run: export HF_TOKEN='hf_...'"
+            )
+
+        # AWS setup
+        self.region = 'us-east-1'  # Match existing deployment
+        self.account_id = get_account_id()
+        self.iam_role = discover_iam_role()
+        self.s3_bucket = discover_s3_bucket(region=self.region)
+        self.job_name = f"llama-sentiment-{int(time.time())}"
+
+        # S3 paths
+        self.s3_prefix = f"training/{self.job_name}"
+        self.s3_data_path = f"s3://{self.s3_bucket}/{self.s3_prefix}/data"
+        self.s3_code_path = f"s3://{self.s3_bucket}/{self.s3_prefix}/code"
+        self.s3_output_path = f"s3://{self.s3_bucket}/{self.s3_prefix}/output"
+
+    def prepare_training_data(self) -> str:
+        """
+        Package dataset/ directory for upload.
+
+        Returns:
+            Path to dataset directory
+        """
+        dataset_path = "dataset"
+        if not os.path.exists(dataset_path):
+            raise Exception(f"Dataset directory not found: {dataset_path}")
+
+        file_count = len(list(Path(dataset_path).glob('*.txt')))
+        print(f"  Found {file_count} data files in {dataset_path}/")
+
+        return dataset_path
+
+    def prepare_training_code(self) -> str:
+        """
+        Create source tarball with training code and dependencies.
+
+        Returns:
+            Path to created tarball
+        """
+        import tarfile
+        import io
+
+        tarball_path = "/tmp/sourcedir.tar.gz"
+
+        print("  Creating source code tarball...")
+
+        with tarfile.open(tarball_path, "w:gz") as tar:
+            # Add training entry point
+            tar.add("sagemaker_train.py")
+            print("    + sagemaker_train.py")
+
+            # Add dependencies
+            dependencies = [
+                "fine_tune_model.py",
+                "dataset_loader.py"
+            ]
+
+            for dep in dependencies:
+                if os.path.exists(dep):
+                    tar.add(dep)
+                    print(f"    + {dep}")
+                else:
+                    print(f"    Warning: {dep} not found, skipping")
+
+            # Create requirements.txt
+            from sagemaker_utils import create_requirements_file
+            requirements = create_requirements_file()
+
+            # Add requirements to tarball
+            req_info = tarfile.TarInfo(name="requirements.txt")
+            req_info.size = len(requirements.encode())
+            tar.addfile(req_info, io.BytesIO(requirements.encode()))
+            print("    + requirements.txt")
+
+        tarball_size = os.path.getsize(tarball_path) / 1024 / 1024
+        print(f"  ✓ Created tarball: {tarball_size:.1f} MB")
+
+        return tarball_path
+
+    def upload_to_s3(self, data_dir: str, code_tarball: str):
+        """
+        Upload training data and code to S3.
+
+        Args:
+            data_dir: Path to dataset directory
+            code_tarball: Path to source code tarball
+        """
+        from sagemaker_utils import upload_to_s3
+
+        print(f"  Uploading training data to {self.s3_data_path}...")
+        upload_to_s3(data_dir, self.s3_data_path)
+
+        print(f"  Uploading training code to {self.s3_code_path}...")
+        upload_to_s3(code_tarball, f"{self.s3_code_path}/sourcedir.tar.gz")
+
+    def submit_training_job(self):
+        """Submit SageMaker training job."""
+        import boto3
+
+        sagemaker = boto3.client('sagemaker', region_name=self.region)
+
+        # Get PyTorch training container (GPU-enabled)
+        image = f"763104351884.dkr.ecr.{self.region}.amazonaws.com/pytorch-training:2.3.0-gpu-py311"
+
+        # Configure training job
+        training_params = {
+            'TrainingJobName': self.job_name,
+            'RoleArn': self.iam_role,
+            'AlgorithmSpecification': {
+                'TrainingImage': image,
+                'TrainingInputMode': 'File',
+            },
+            'Environment': {
+                'HF_TOKEN': self.hf_token,
+                'HUGGING_FACE_HUB_TOKEN': self.hf_token,
+            },
+            'InputDataConfig': [
+                {
+                    'ChannelName': 'training',
+                    'DataSource': {
+                        'S3DataSource': {
+                            'S3DataType': 'S3Prefix',
+                            'S3Uri': self.s3_data_path,
+                            'S3DataDistributionType': 'FullyReplicated',
+                        }
+                    },
+                }
+            ],
+            'OutputDataConfig': {
+                'S3OutputPath': self.s3_output_path,
+            },
+            'ResourceConfig': {
+                'InstanceType': self.instance_type,
+                'InstanceCount': 1,
+                'VolumeSizeInGB': 30,
+            },
+            'StoppingCondition': {
+                'MaxRuntimeInSeconds': 3600,  # 1 hour max
+            },
+            'HyperParameters': {
+                'sagemaker_program': 'sagemaker_train.py',
+                'sagemaker_submit_directory': f"{self.s3_code_path}/sourcedir.tar.gz",
+                'model_name': self.model_name,
+            },
+        }
+
+        print(f"  Job name: {self.job_name}")
+        print(f"  Instance: {self.instance_type}")
+        print(f"  Container: pytorch-training:2.3.0-gpu-py311")
+        print(f"  Region: {self.region}")
+
+        sagemaker.create_training_job(**training_params)
+        print(f"✓ Training job submitted!")
+
+        # Print cost estimate
+        cost_per_hour = {
+            'ml.p3.2xlarge': 3.83,
+            'ml.p3.8xlarge': 14.69,
+            'ml.p3.16xlarge': 28.15,
+            'ml.g4dn.xlarge': 0.736,
+            'ml.g6e.xlarge': 1.25,
+            'ml.g6e.2xlarge': 2.50,
+            'ml.g6e.12xlarge': 10.00,  # 4x L40S GPUs
+        }.get(self.instance_type, 10.00)
+
+        print(f"\n💰 Estimated cost: ~${cost_per_hour}/hour")
+        if num_gpus := 4 if 'g6e.12xlarge' in self.instance_type else 1:
+            print(f"   Multi-GPU training (4 GPUs): ~4x faster")
+            print(f"   Expected duration: 3-5 minutes (~${cost_per_hour * 0.08:.2f})")
+        else:
+            print(f"   Expected duration: 10-20 minutes (~${cost_per_hour * 0.25:.2f})")
+
+    def wait_for_completion(self):
+        """Monitor training job and stream logs."""
+        import boto3
+
+        sagemaker = boto3.client('sagemaker', region_name=self.region)
+
+        print(f"\nMonitoring training job: {self.job_name}")
+        print("=" * 60)
+
+        # Try to stream CloudWatch logs
+        try:
+            from sagemaker_utils import stream_cloudwatch_logs
+            stream_cloudwatch_logs(
+                log_group=f"/aws/sagemaker/TrainingJobs",
+                log_stream_prefix=self.job_name,
+                region=self.region
+            )
+        except Exception as e:
+            print(f"Note: Could not stream logs: {e}")
+            print("Monitoring via status polling instead...\n")
+
+        # Poll for completion
+        last_status = None
+        while True:
+            response = sagemaker.describe_training_job(TrainingJobName=self.job_name)
+            status = response['TrainingJobStatus']
+
+            # Print status updates
+            if status != last_status:
+                timestamp = time.strftime('%H:%M:%S')
+                print(f"[{timestamp}] Status: {status}")
+                last_status = status
+
+            if status == 'Completed':
+                print("\n✓ Training completed successfully!")
+                break
+            elif status in ['Failed', 'Stopped']:
+                print(f"\n✗ Training {status.lower()}")
+                print(f"Failure reason: {response.get('FailureReason', 'Unknown')}")
+                print(f"\nTo debug, check CloudWatch logs:")
+                print(f"  Log group: /aws/sagemaker/TrainingJobs")
+                print(f"  Log stream: {self.job_name}/algo-1-*")
+                raise Exception(f"Training job {status.lower()}")
+
+            time.sleep(30)
+
+    def download_model(self):
+        """Download trained model from S3."""
+        from sagemaker_utils import download_from_s3
+
+        # SageMaker saves to {s3_output_path}/{job_name}/output/model.tar.gz
+        s3_model_path = f"{self.s3_output_path}/{self.job_name}/output/model.tar.gz"
+
+        print(f"\nDownloading trained model from S3...")
+        print(f"  Source: s3://{self.s3_bucket}/{self.s3_prefix}/output/{self.job_name}/output/model.tar.gz")
+        print(f"  Destination: {self.output_dir}")
+
+        # Download and extract
+        import tempfile
+        import tarfile
+
+        with tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False) as tmp:
+            download_from_s3(s3_model_path, tmp.name)
+
+            # Extract to output directory
+            os.makedirs(self.output_dir, exist_ok=True)
+            with tarfile.open(tmp.name, 'r:gz') as tar:
+                tar.extractall(self.output_dir)
+
+            os.unlink(tmp.name)
+
+        print(f"✓ Model downloaded to {self.output_dir}")
+
+        # Verify required files exist
+        print("\nVerifying output files...")
+        required_files = [
+            'adapter_config.json',
+            'adapter_model.safetensors',
+            'test_set.json',
+            'training_info.json'
+        ]
+
+        all_present = True
+        for filename in required_files:
+            filepath = Path(self.output_dir) / filename
+            if filepath.exists():
+                size_kb = filepath.stat().st_size / 1024
+                print(f"  ✓ {filename} ({size_kb:.1f} KB)")
+            else:
+                print(f"  ✗ {filename} (MISSING)")
+                all_present = False
+
+        if not all_present:
+            print("\n⚠️  Warning: Some expected files are missing!")
+            print("The model may not be fully compatible with evaluation scripts.")
+        else:
+            print("\n✓ All required files present!")
+
+    def run(self):
+        """Execute complete SageMaker training workflow."""
+        print("=" * 60)
+        print("SageMaker Training Workflow")
+        print("=" * 60)
+
+        try:
+            # Phase 1: Prepare
+            print("\n[1/5] Preparing training data and code...")
+            data_dir = self.prepare_training_data()
+            code_tarball = self.prepare_training_code()
+
+            # Phase 2: Upload
+            print("\n[2/5] Uploading to S3...")
+            self.upload_to_s3(data_dir, code_tarball)
+
+            # Phase 3: Submit
+            print("\n[3/5] Submitting training job...")
+            self.submit_training_job()
+
+            # Phase 4: Monitor
+            print("\n[4/5] Monitoring training progress...")
+            self.wait_for_completion()
+
+            # Phase 5: Download
+            print("\n[5/5] Downloading trained model...")
+            self.download_model()
+
+            print("\n" + "=" * 60)
+            print("SageMaker Training Complete!")
+            print("=" * 60)
+            print(f"Model saved to: {self.output_dir}")
+            print("\nYou can now run evaluation scripts:")
+            print("  python compare_base_vs_finetuned.py")
+            print("  python generate_evaluation_cache.py")
+            print("  python logprob_demo_cli.py 'text' --model finetuned")
+
+        except Exception as e:
+            print(f"\n{'='*60}")
+            print("SageMaker Training Failed!")
+            print(f"{'='*60}")
+            print(f"Error: {e}")
+            raise
+
+
 def main():
     """Run the fine-tuning process."""
     import argparse
 
     parser = argparse.ArgumentParser(description='Fine-tune Llama 3.1 for sentiment classification')
     parser.add_argument(
-        '--classification-mode',
-        choices=['first-token', 'last-token'],
-        default='first-token',
-        help='Classification mode: first-token (direct) or last-token (chain-of-thought)'
-    )
-    parser.add_argument(
         '--output-dir',
         default='./fine_tuned_sentiment_model',
         help='Output directory for the fine-tuned model'
     )
+    parser.add_argument(
+        '--sagemaker',
+        action='store_true',
+        help='Train using AWS SageMaker instead of locally (requires AWS credentials and IAM role)'
+    )
+    parser.add_argument(
+        '--instance-type',
+        default='ml.g6e.12xlarge',
+        help='SageMaker instance type (only used with --sagemaker). Default: ml.g6e.12xlarge (4x L40S GPUs, ~$10/hr)'
+    )
 
     args = parser.parse_args()
 
-    # Create classification configuration
-    if args.classification_mode == 'last-token':
-        config = ClassificationConfig(mode=ClassificationMode.LAST_TOKEN)
-        print("FINE-TUNING: Chain-of-Thought Sentiment Classification")
-    else:
-        config = ClassificationConfig(mode=ClassificationMode.FIRST_TOKEN)
-        print("FINE-TUNING: Direct Sentiment Classification")
-
+    print("FINE-TUNING: Sentiment Classification")
     print("=" * 60)
-    
+
+    # Branch based on training location
+    if args.sagemaker:
+        print("Training location: AWS SageMaker")
+        print(f"Instance type: {args.instance_type}")
+        print("=" * 60)
+
+        # Validate AWS prerequisites
+        try:
+            from sagemaker_utils import validate_prerequisites
+            validate_prerequisites(check_dataset=True)
+        except Exception as e:
+            print(f"\n❌ Prerequisite validation failed: {e}")
+            return
+
+        # Run SageMaker training
+        try:
+            orchestrator = SageMakerTrainingOrchestrator(
+                model_name="meta-llama/Llama-3.1-8B-Instruct",
+                output_dir=args.output_dir,
+                instance_type=args.instance_type
+            )
+            orchestrator.run()
+
+            print("\n✅ SageMaker training completed successfully!")
+            print(f"Model saved to: {args.output_dir}")
+
+        except Exception as e:
+            print(f"\n❌ SageMaker training failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+
+        return  # Exit after SageMaker training
+
+    # Local training path (UNCHANGED from original implementation)
+    print("Training location: Local")
+    print("=" * 60)
+
     # Check for required dependencies
     try:
         import peft
@@ -767,8 +1153,8 @@ def main():
     if not torch.backends.mps.is_available() and not torch.cuda.is_available():
         print("WARNING:  No GPU available - training will be slow on CPU")
 
-    # Initialize fine-tuner with configuration
-    fine_tuner = SentimentFineTuner(output_dir=args.output_dir, config=config)
+    # Initialize fine-tuner
+    fine_tuner = SentimentFineTuner(output_dir=args.output_dir)
 
     # Run fine-tuning
     try:
