@@ -16,8 +16,10 @@ Requirements:
 import os
 import torch
 import torch.nn.functional as F
+import numpy as np
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from typing import Dict, List, Optional, Any
+from classification_config import ClassificationConfig, ClassificationMode, PromptTemplates, extract_classification_from_tokens, get_classification_confidence
 
 # Suppress transformers warnings about generation parameters
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
@@ -36,13 +38,15 @@ class TransformerLogprobsClassifier:
 
     def __init__(self,
                  model_name: str = "meta-llama/Llama-3.1-8B-Instruct",
-                 fine_tuned_path: str = None):
+                 fine_tuned_path: str = None,
+                 config: Optional[ClassificationConfig] = None):
         """
         Initialize the transformer logprobs classifier.
 
         Args:
             model_name: Hugging Face model identifier
             fine_tuned_path: Path to fine-tuned model (None for base model)
+            config: Classification configuration (optional)
         """
         self.model_name = model_name
         self.fine_tuned_path = fine_tuned_path
@@ -50,9 +54,14 @@ class TransformerLogprobsClassifier:
         self.tokenizer = None
         self.is_fine_tuned = fine_tuned_path is not None
 
-        # Map various token variations to binary classification
-        self.positive_tokens = ["yes", "Yes", "YES", "y", "Y", "positive", "Positive", "POSITIVE", "pos", "Pos", "POS", "true", "True", "TRUE", "1"]
-        self.negative_tokens = ["no", "No", "NO", "n", "N", "negative", "Negative", "NEGATIVE", "neg", "Neg", "NEG", "false", "False", "FALSE", "0"]
+        # Use provided config or default to first-token mode
+        if config is None:
+            config = ClassificationConfig(mode=ClassificationMode.FIRST_TOKEN)
+        self.config = config
+
+        # Map various token variations to binary classification (backward compatibility)
+        self.positive_tokens = self.config.positive_tokens or ["yes", "Yes", "YES", "y", "Y", "positive", "Positive", "POSITIVE", "pos", "Pos", "POS", "true", "True", "TRUE", "1"]
+        self.negative_tokens = self.config.negative_tokens or ["no", "No", "NO", "n", "N", "negative", "Negative", "NEGATIVE", "neg", "Neg", "NEG", "false", "False", "FALSE", "0"]
 
     def _load_model(self):
         """Load the Llama model and tokenizer (lazy loading)."""
@@ -139,25 +148,18 @@ class TransformerLogprobsClassifier:
             return False
 
     def create_classification_prompt(self, text: str) -> str:
-        """Create a binary yes/no prompt for positive sentiment detection."""
-        if self.is_fine_tuned:
-            # Use the same format as fine-tuning for consistency
-            return f"""<|begin_of_text|><|start_header_id|>user<|end_header_id|>
+        """Create a classification prompt based on configuration."""
+        self._load_model()  # Ensure tokenizer is loaded
 
-Classify the sentiment of this text as either 'positive' or 'negative':
-
-"{text}"<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-
-"""
+        if self.config.mode == ClassificationMode.FIRST_TOKEN:
+            return PromptTemplates.create_first_token_prompt(self.tokenizer, text)
         else:
-            # Original format for base model
-            return f"""<|begin_of_text|><|start_header_id|>user<|end_header_id|>
+            return PromptTemplates.create_last_token_prompt(self.tokenizer, text)
 
-Is this text positive in sentiment? Answer with only "yes" or "no".
-
-Text: "{text}"<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-
-"""
+    def create_chain_of_thought_prompt(self, text: str) -> str:
+        """Create a chain-of-thought prompt that asks for explanation followed by YES/NO."""
+        self._load_model()  # Ensure tokenizer is loaded
+        return PromptTemplates.create_last_token_prompt(self.tokenizer, text)
 
     def get_real_logprobs_confidence(self, text: str, raw_prompt: bool = False) -> Dict[str, Any]:
         """
@@ -184,59 +186,127 @@ Text: "{text}"<|eot_id|><|start_header_id|>assistant<|end_header_id|>
         device = next(self.model.parameters()).device
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
+        # Set generation parameters based on classification mode
+        if self.config.mode == ClassificationMode.FIRST_TOKEN:
+            # For direct classification, only need 1 token
+            max_new_tokens = 1
+        else:
+            # For chain-of-thought, need enough tokens for explanation + answer
+            max_new_tokens = 100
+
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=1,
+                max_new_tokens=max_new_tokens,
                 return_dict_in_generate=True,
                 output_scores=True,
                 do_sample=False,  # Deterministic - override model's default do_sample=True
                 temperature=None,  # Explicitly unset temperature (override model default)
                 top_p=None,      # Explicitly unset top_p (override model default)
-                pad_token_id=self.tokenizer.eos_token_id
+                pad_token_id=self.tokenizer.eos_token_id,
+                eos_token_id=self.tokenizer.eos_token_id
             )
 
             if outputs.scores:
-                logits = outputs.scores[0][0]
+                # Get the full generated sequence
+                input_length = inputs['input_ids'].shape[1]
+                generated_sequence = outputs.sequences[0][input_length:]
+                generated_text = self.tokenizer.decode(generated_sequence, skip_special_tokens=True)
 
-                log_probs = F.log_softmax(logits, dim=-1)
-                probs = F.softmax(logits, dim=-1)
+                if self.config.mode == ClassificationMode.FIRST_TOKEN:
+                    # For direct classification, analyze the first token
+                    logits = outputs.scores[0][0]  # First (and only) token's logits
+                    log_probs = F.log_softmax(logits, dim=-1)
+                    probs = F.softmax(logits, dim=-1)
 
-                generated_token_id = outputs.sequences[0][-1]
-                generated_token = self.tokenizer.decode([generated_token_id]).strip()
+                    # Get the actual generated token
+                    generated_token_id = outputs.sequences[0][-1]
+                    generated_token = self.tokenizer.decode([generated_token_id]).strip()
 
-                positive_prob = 0.0
-                negative_prob = 0.0
-                positive_logprob = float('-inf')
-                negative_logprob = float('-inf')
+                    positive_prob = 0.0
+                    negative_prob = 0.0
+                    positive_logprob = float('-inf')
+                    negative_logprob = float('-inf')
 
-                token_details = {}
+                    # Use appropriate token sets
+                    if self.is_fine_tuned:
+                        positive_tokens = ["positive", "Positive", "POSITIVE"]
+                        negative_tokens = ["negative", "Negative", "NEGATIVE"]
+                    else:
+                        positive_tokens = self.positive_tokens
+                        negative_tokens = self.negative_tokens
 
-                # Use different token sets based on model type
-                if self.is_fine_tuned:
-                    # Fine-tuned models output "positive"/"negative" directly
-                    positive_tokens = ["positive", "Positive", "POSITIVE"]
-                    negative_tokens = ["negative", "Negative", "NEGATIVE"]
+                    token_details = {}
+
+                    for token_text in (positive_tokens + negative_tokens):
+                        token_ids = self.tokenizer.encode(token_text, add_special_tokens=False)
+                        if token_ids:
+                            token_id = token_ids[0]
+                            if token_id < len(probs):
+                                prob = probs[token_id].item()
+                                logprob = log_probs[token_id].item()
+                                token_details[token_text] = {'prob': prob, 'logprob': logprob}
+
+                                if token_text in positive_tokens:
+                                    positive_prob += prob
+                                    positive_logprob = max(positive_logprob, logprob)
+                                elif token_text in negative_tokens:
+                                    negative_prob += prob
+                                    negative_logprob = max(negative_logprob, logprob)
+
                 else:
-                    # Base models use yes/no format
-                    positive_tokens = self.positive_tokens
-                    negative_tokens = self.negative_tokens
+                    # For chain-of-thought, find the final classification token and extract its confidence
+                    # Use compute_transition_scores to get proper token probabilities
+                    transition_scores = self.model.compute_transition_scores(
+                        outputs.sequences,
+                        outputs.scores,
+                        normalize_logits=True
+                    )
 
-                for token_text in (positive_tokens + negative_tokens):
-                    token_ids = self.tokenizer.encode(token_text, add_special_tokens=False)
-                    if token_ids:
-                        token_id = token_ids[0]
-                        if token_id < len(probs):
-                            prob = probs[token_id].item()
-                            logprob = log_probs[token_id].item()
-                            token_details[token_text] = {'prob': prob, 'logprob': logprob}
+                    # Find the last token that matches a classification word
+                    final_classification_confidence = 0.0
+                    final_token_found = False
 
-                            if token_text in positive_tokens:
-                                positive_prob += prob
-                                positive_logprob = max(positive_logprob, logprob)  # Take max logprob
-                            elif token_text in negative_tokens:
-                                negative_prob += prob
-                                negative_logprob = max(negative_logprob, logprob)  # Take max logprob
+                    for i, (token_id, score) in enumerate(zip(generated_sequence, transition_scores[0])):
+                        token = self.tokenizer.decode([token_id], skip_special_tokens=True).strip().upper()
+                        if token in ['YES', 'NO', 'POSITIVE', 'NEGATIVE']:
+                            # Found a classification token - use its confidence
+                            final_classification_confidence = torch.exp(score).item()
+                            final_token_found = True
+
+                    # Set probabilities based on final classification
+                    if final_token_found:
+                        # Extract actual classification from generated text
+                        classification = self.extract_final_classification([self.tokenizer.decode([token_id]) for token_id in generated_sequence])
+
+                        if classification == 'positive':
+                            positive_prob = final_classification_confidence
+                            negative_prob = 1.0 - final_classification_confidence
+                        else:
+                            negative_prob = final_classification_confidence
+                            positive_prob = 1.0 - final_classification_confidence
+                    else:
+                        # Fallback if no classification token found
+                        positive_prob = 0.5
+                        negative_prob = 0.5
+
+                    positive_logprob = np.log(positive_prob) if positive_prob > 0 else float('-inf')
+                    negative_logprob = np.log(negative_prob) if negative_prob > 0 else float('-inf')
+
+                    token_details = {
+                        'chain_of_thought': True,
+                        'generated_text': generated_text,
+                        'final_classification_confidence': final_classification_confidence if final_token_found else 0.5
+                    }
+
+                    # For consistency with the rest of the method, set up dummy variables
+                    # since we don't need the full vocab analysis for chain-of-thought
+                    probs = torch.zeros(self.tokenizer.vocab_size)  # Dummy for compatibility
+                    log_probs = torch.zeros(self.tokenizer.vocab_size)  # Dummy for compatibility
+
+                    # Set generated_token for chain-of-thought (use the final classification)
+                    classification = self.extract_final_classification([self.tokenizer.decode([token_id]) for token_id in generated_sequence])
+                    generated_token = "YES" if classification == 'positive' else "NO"
 
                 sentiment_probs = {
                     'positive': positive_prob,
@@ -328,6 +398,125 @@ Text: "{text}"<|eot_id|><|start_header_id|>assistant<|end_header_id|>
                 return 'negative'
             else:
                 return f'unknown_token:{token_clean}'
+
+    def extract_final_classification(self, generated_tokens: List[str]) -> str:
+        """Extract final classification from generated tokens using config-based logic."""
+        return extract_classification_from_tokens(generated_tokens, self.config)
+
+    def get_multi_token_logprobs(self, text: str, max_new_tokens: int = None, raw_prompt: bool = False, chain_of_thought: bool = False) -> Dict[str, Any]:
+        """
+        Generate multiple tokens and return logprobs for each token generation step.
+
+        Args:
+            text: Input text to analyze
+            max_new_tokens: Maximum number of tokens to generate
+            raw_prompt: If True, use text as raw prompt; if False, wrap in classification prompt
+            chain_of_thought: If True, use chain-of-thought prompt format
+
+        Returns:
+            Dict containing token-by-token logprob analysis
+        """
+        self._load_model()
+
+        device = next(self.model.parameters()).device
+
+        # Prepare prompt
+        if raw_prompt:
+            prompt = text
+        elif chain_of_thought:
+            prompt = self.create_chain_of_thought_prompt(text)
+        else:
+            prompt = self.create_classification_prompt(text)
+
+        try:
+            inputs = self.tokenizer(prompt, return_tensors="pt")
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            input_length = inputs['input_ids'].shape[1]
+
+            generation_params = {
+                "return_dict_in_generate": True,
+                "output_scores": True,
+                "do_sample": False,
+                "temperature": 0,  # Explicitly set temperature to 0
+                "pad_token_id": self.tokenizer.eos_token_id,
+                "eos_token_id": self.tokenizer.eos_token_id,
+                "max_length": None  # Remove default max_length limit
+            }
+
+            # Only set max_new_tokens if specified, otherwise let model stop naturally
+            if max_new_tokens is not None:
+                generation_params["max_new_tokens"] = max_new_tokens
+            else:
+                # If no max_new_tokens specified, set a reasonable upper bound but let EOS stop it naturally
+                generation_params["max_new_tokens"] = 100
+
+            with torch.no_grad():
+                outputs = self.model.generate(**inputs, **generation_params)
+
+            if not outputs.scores:
+                return {'error': 'No scores returned from model generation'}
+
+            # Extract generated tokens
+            generated_sequence = outputs.sequences[0][input_length:]  # Remove input tokens
+            generated_text = self.tokenizer.decode(generated_sequence, skip_special_tokens=True)
+
+            # Analyze each token generation step
+            token_analyses = []
+
+            for step_idx, logits in enumerate(outputs.scores):
+                if step_idx >= len(generated_sequence):
+                    break
+
+                # Get probabilities for this step
+                step_logits = logits[0]  # Remove batch dimension
+                log_probs = F.log_softmax(step_logits, dim=-1)
+                probs = F.softmax(step_logits, dim=-1)
+
+                # Get the actually generated token
+                generated_token_id = generated_sequence[step_idx]
+                generated_token = self.tokenizer.decode([generated_token_id]).strip()
+
+                # Get top-k tokens for this step
+                top_k = 12  # Show top 12 as requested
+                top_probs, top_indices = torch.topk(probs, top_k)
+
+                step_analysis = {
+                    'step': step_idx + 1,
+                    'generated_token': generated_token,
+                    'generated_token_id': generated_token_id.item(),
+                    'top_tokens': []
+                }
+
+                # Collect top tokens and their probabilities
+                for rank, (prob, idx) in enumerate(zip(top_probs, top_indices)):
+                    token = self.tokenizer.decode([idx.item()]).strip()
+                    step_analysis['top_tokens'].append({
+                        'rank': rank + 1,
+                        'token': token,
+                        'token_id': idx.item(),
+                        'probability': prob.item(),
+                        'log_probability': log_probs[idx].item(),
+                        'percentage': prob.item() * 100,
+                        'is_generated': idx.item() == generated_token_id.item()
+                    })
+
+                token_analyses.append(step_analysis)
+
+            return {
+                'text': text,
+                'prompt': prompt,
+                'generated_text': generated_text,
+                'generated_tokens': [self.tokenizer.decode([token_id]).strip() for token_id in generated_sequence],
+                'token_analyses': token_analyses,
+                'method': 'multi_token_logprobs',
+                'model': self.model_name,
+                'max_new_tokens': max_new_tokens,
+                'raw_prompt': raw_prompt,
+                'chain_of_thought': chain_of_thought
+            }
+
+        except Exception as e:
+            return {'error': f'Failed to generate multi-token logprobs: {str(e)}'}
 
     def test_model_availability(self) -> bool:
         """Test if the model can be loaded."""

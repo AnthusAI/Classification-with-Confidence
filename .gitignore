@@ -156,5 +156,47 @@ lightning_logs/
 .cache/
 transformers_cache/
 
-# Generated images (optional - you might want to track these)
-# images/
+# Evaluation cache (regenerated locally)
+evaluation_cache/
+
+# Training dataset (generated locally)
+fine_tuning_dataset.jsonl
+
+# Generated images (regenerated locally)
+images/approach_comparison/
+
+# SageMaker deployment artifacts
+*.tar.gz
+model_artifacts/
+merged_model_for_bedrock/
+temp/
+tmp_*/
+cdk/
+cloudformation/
+
+# Deployment logs
+*_log*.txt
+ic_*.txt
+
+# Temporary test scripts
+test_*.py
+raw_model_test.py
+comprehensive_approach_analysis.py
+deploy_jumpstart_base.py
+merge_lora_for_bedrock.py
+simple_logprobs.py
+
+# Adapter config at root (should be in fine_tuned_sentiment_model/)
+/adapter_config.json
+
+# Temporary documentation (replaced by proper docs)
+DEPLOYMENT_IN_PROGRESS.md
+FINAL_CONCLUSION.md
+FINAL_STATUS.md
+INFERENCE_COMPONENTS_APPROACH.md
+INFERENCE_COMPONENTS_FINAL_STATUS.md
+INFERENCE_COMPONENTS_REQUIREMENTS.md
+LORA_ADAPTER_DEPLOYMENT_PLAN.md
+SAGEMAKER_DEPLOYMENT_STATUS.md
+SAGEMAKER_NEXT_STEPS.md
+WHAT_ACTUALLY_WORKS.md

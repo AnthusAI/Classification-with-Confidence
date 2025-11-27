@@ -577,7 +577,60 @@ However, the payoff in automation capability can be substantial. The key is meas
 
 All examples and results in this article are based on actual experiments conducted using Meta's Llama 3.1-8B-Instruct model. The complete codebase, datasets, and implementation details are available in this repository—and **you can run everything yourself in just a few commands!**
 
-**Ready to experiment with confidence scoring on your own data?** Check out our [step-by-step guide](TECHNICAL.md) to get started. Whether you want to reproduce our exact results or adapt the techniques for your own use case, we've made it as simple as possible to get up and running.
+### Quick Start
+
+**Just want to see the visualizations?** (No GPU needed!)
+```bash
+git clone <your-repo>
+cd "Classification with Confidence"
+pip install matplotlib numpy scikit-learn
+python generate_all_charts.py
+```
+This generates all charts in seconds using pre-computed cached data.
+
+**Complete pipeline** (fine-tuning + analysis + charts):
+```bash
+python run_complete_pipeline.py
+```
+
+**Note**: Fine-tuned model weights aren't included due to GitHub's file size limits. Run `python fine_tune_model.py` first (10-20 minutes on modern GPU).
+
+For detailed technical implementation, see [AGENTS.md](AGENTS.md).
+
+## Deploying to Production with Amazon SageMaker
+
+Once you've fine-tuned your model locally, you can deploy it to production using **Amazon SageMaker Inference Components** with LoRA adapters for cost-efficient multi-adapter inference.
+
+**What is Multi-Adapter Inference?**
+Instead of deploying one endpoint per customer (expensive!), SageMaker Inference Components let you serve hundreds of fine-tuned LoRA adapters from a single endpoint. One base model + dynamic adapter loading = massive cost savings.
+
+**Quick Start:**
+
+```bash
+# 1. Fine-tune your model locally
+python fine_tune_model.py
+
+# 2. Package and upload LoRA adapter to S3
+cd fine_tuned_sentiment_model
+tar -czf ../sentiment_adapter.tar.gz adapter_model.safetensors adapter_config.json
+aws s3 cp ../sentiment_adapter.tar.gz s3://your-bucket/adapters/
+
+# 3. Deploy to SageMaker
+export HF_TOKEN="your_huggingface_token"
+python3 scripts/deploy_sagemaker.py
+```
+
+**What this does:**
+- Deploys using [SageMaker Inference Components](https://aws.amazon.com/blogs/machine-learning/easily-deploy-and-manage-hundreds-of-lora-adapters-with-sagemaker-efficient-multi-adapter-inference/) for multi-adapter inference
+- Creates endpoint with Llama 3.1-8B base model + your fine-tuned LoRA adapter
+- Enables serving hundreds of customer-specific adapters from a single endpoint
+- Provides 1000x cost savings vs traditional one-endpoint-per-customer approach
+
+**Deployment time**: ~20-30 minutes
+**Cost**: ~$1.25/hour (ml.g6e.xlarge with 48GB GPU)
+**Capability**: Serve 10+ LoRA adapters from one endpoint
+
+For complete deployment instructions and best practices, see our [**SageMaker Deployment Guide**](docs/SAGEMAKER_DEPLOYMENT.md).
 
 ## Powered by Llama
 

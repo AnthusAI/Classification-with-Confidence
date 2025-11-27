@@ -28,6 +28,7 @@ from collections import defaultdict
 import time
 
 # Import our existing modules
+from classification_config import ClassificationConfig, ClassificationMode
 from dataset_loader import DatasetLoader
 from logprobs_confidence import TransformerLogprobsClassifier
 # Removed FineTunedSentimentClassifier - using TransformerLogprobsClassifier for both (DRY)

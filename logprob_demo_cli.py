@@ -18,8 +18,12 @@ Examples:
 
 import sys
 import argparse
+import os
+import tempfile
+from datetime import datetime
 from typing import Dict, Any, List, Tuple
 from logprobs_confidence import TransformerLogprobsClassifier
+from classification_config import ClassificationConfig, ClassificationMode
 
 
 def format_logprob_table(result: Dict[str, Any], top_k: int = 8) -> str:
@@ -91,6 +95,117 @@ def format_aggregation_summary(result: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def generate_multi_token_markdown(result: Dict[str, Any], model_type: str) -> str:
+    """Generate markdown report for multi-token analysis."""
+    if 'error' in result:
+        return f"# Error\n\n{result['error']}"
+
+    model_name = "Fine-tuned Model" if model_type == "finetuned" else "Base Model"
+    token_analyses = result.get('token_analyses', [])
+
+    md_lines = []
+    md_lines.append(f"# Multi-Token Log Probability Analysis - {model_name}")
+    md_lines.append(f"\n**Generated at:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    md_lines.append(f"\n**Model:** {result.get('model', 'Unknown')}")
+    md_lines.append(f"\n**Prompt:** `{result.get('prompt', '')}`")
+    md_lines.append(f"\n**Completion:** `{result.get('generated_text', '')}`")
+    md_lines.append(f"\n**Total Tokens:** {len(token_analyses)}")
+    md_lines.append("\n---\n")
+
+    if not token_analyses:
+        md_lines.append("No token analyses available.")
+        return "\n".join(md_lines)
+
+    # Create single table with one column per token
+    # Header row with token positions
+    header = "| Rank |"
+    for i, analysis in enumerate(token_analyses, 1):
+        header += f" Token {i} |"
+    md_lines.append(header)
+
+    # Separator row
+    separator = "|------|"
+    for _ in token_analyses:
+        separator += "--------|"
+    md_lines.append(separator)
+
+    # Get max number of top tokens to show (12 as requested)
+    max_tokens = 12
+
+    # Create rows for each rank
+    for rank in range(1, max_tokens + 1):
+        row = f"| {rank} |"
+
+        for analysis in token_analyses:
+            top_tokens = analysis.get('top_tokens', [])
+            if rank <= len(top_tokens):
+                token_info = top_tokens[rank - 1]
+                token = token_info['token'].replace('|', '\\|').strip()
+                percentage = token_info['percentage']
+
+                # Combine token and percentage in one cell, centered
+                cell_content = f"**{token}**<br/><small>{percentage:.1f}%</small>"
+                row += f" {cell_content} |"
+            else:
+                row += " |"
+
+        md_lines.append(row)
+
+    return "\n".join(md_lines)
+
+
+def format_multi_token_console_output(result: Dict[str, Any]) -> str:
+    """Format multi-token results for console display."""
+    if 'error' in result:
+        return f"❌ Error: {result['error']}"
+
+    lines = []
+    lines.append("📝 MULTI-TOKEN GENERATION ANALYSIS:")
+    lines.append(f"Generated Text: \"{result.get('generated_text', '')}\"")
+    lines.append(f"Total Tokens: {len(result.get('token_analyses', []))}")
+    lines.append("")
+
+    # Show analysis for each token
+    for analysis in result.get('token_analyses', []):
+        step = analysis['step']
+        generated_token = analysis['generated_token']
+
+        lines.append(f"TOKEN {step}: \"{generated_token}\"")
+        lines.append("Rank  Token        Log-Prob    Probability    Percentage")
+        lines.append("-" * 55)
+
+        for token_info in analysis['top_tokens']:
+            rank = token_info['rank']
+            token = f'"{token_info["token"]:<8}"'
+            log_prob = token_info['log_probability']
+            probability = token_info['probability']
+            percentage = token_info['percentage']
+            selected = " ← SELECTED" if token_info['is_generated'] else ""
+
+            lines.append(
+                f"{rank:>2}.   {token:<12} {log_prob:>8.3f}    {probability:>10.6f}    {percentage:>6.2f}%{selected}"
+            )
+
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def save_markdown_report(content: str, filename: str) -> str:
+    """Save markdown content to temp folder and return the path."""
+    # Create temp directory if it doesn't exist
+    temp_dir = "temp"
+    os.makedirs(temp_dir, exist_ok=True)
+
+    # Create full path
+    filepath = os.path.join(temp_dir, filename)
+
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(content)
+
+    return os.path.abspath(filepath)
+
+
 def print_model_header(model_type: str, text: str, raw_prompt: bool = False):
     """Print a formatted header for the model analysis."""
     model_name = "FINE-TUNED MODEL" if model_type == "finetuned" else "BASE MODEL"
@@ -114,6 +229,7 @@ Examples:
   python logprob_demo_cli.py "I love this movie!"
   python logprob_demo_cli.py "Best worst thing ever" --model finetuned
   python logprob_demo_cli.py "This is okay" --top-k 10
+  python logprob_demo_cli.py "Think step by step. Is this positive? Answer:" --multiple-tokens 20
         """
     )
     
@@ -140,6 +256,22 @@ Examples:
         action='store_true',
         help='Use text as raw prompt instead of wrapping in classification question'
     )
+    parser.add_argument(
+        '--multiple-tokens', '-m',
+        action='store_true',
+        help='Show logprobs for all tokens in the natural completion (creates markdown report)'
+    )
+    parser.add_argument(
+        '--chain-of-thought', '-c',
+        action='store_true',
+        help='Use chain-of-thought prompt format (explanation followed by YES/NO)'
+    )
+    parser.add_argument(
+        '--classification-mode',
+        choices=['first-token', 'last-token'],
+        default='first-token',
+        help='Classification mode: first-token (direct) or last-token (chain-of-thought)'
+    )
     
     args = parser.parse_args()
     
@@ -148,6 +280,14 @@ Examples:
         sys.exit(1)
     
     try:
+        # Create classification configuration
+        if args.chain_of_thought or args.classification_mode == 'last-token':
+            mode = ClassificationMode.LAST_TOKEN
+        else:
+            mode = ClassificationMode.FIRST_TOKEN
+
+        config = ClassificationConfig(mode=mode)
+
         # Initialize the appropriate classifier
         if args.model == 'finetuned':
             fine_tuned_path = "./fine_tuned_sentiment_model"
@@ -156,9 +296,9 @@ Examples:
                 print("❌ Error: Fine-tuned model not found!")
                 print("💡 Run 'python fine_tune_model.py' first to create the fine-tuned model.")
                 sys.exit(1)
-            classifier = TransformerLogprobsClassifier(fine_tuned_path=fine_tuned_path)
+            classifier = TransformerLogprobsClassifier(fine_tuned_path=fine_tuned_path, config=config)
         else:
-            classifier = TransformerLogprobsClassifier()
+            classifier = TransformerLogprobsClassifier(config=config)
         
         # Test model availability
         if not classifier.test_model_availability():
@@ -169,7 +309,37 @@ Examples:
             print("  3. Access to Llama models")
             sys.exit(1)
         
-        if args.quiet:
+        if args.multiple_tokens:
+            # Multi-token analysis mode - let model generate naturally
+            print_model_header(args.model, args.text, args.raw_prompt)
+            print(f"⏳ Generating natural completion and analyzing each step...")
+
+            # Let model generate naturally without forcing token limits
+            result = classifier.get_multi_token_logprobs(
+                args.text,
+                max_new_tokens=None,  # No limit - let model stop naturally
+                raw_prompt=args.raw_prompt,
+                chain_of_thought=args.chain_of_thought
+            )
+
+            if 'error' in result:
+                print(f"❌ Error: {result['error']}")
+                sys.exit(1)
+
+            # Show console output
+            console_output = format_multi_token_console_output(result)
+            print(console_output)
+
+            # Generate markdown report
+            markdown_content = generate_multi_token_markdown(result, args.model)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            model_suffix = "finetuned" if args.model == "finetuned" else "base"
+            filename = f"logprob_analysis_{model_suffix}_{timestamp}.md"
+
+            report_path = save_markdown_report(markdown_content, filename)
+            print(f"\n📄 Markdown report saved to: {report_path}")
+
+        elif args.quiet:
             # Simple output for scripting
             result = classifier.get_real_logprobs_confidence(args.text, raw_prompt=args.raw_prompt)
             if args.raw_prompt:

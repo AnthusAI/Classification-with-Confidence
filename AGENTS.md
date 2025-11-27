@@ -356,3 +356,57 @@ confidence = count(most_common) / len(responses)
 3. **Chart Generation**: Verify all 12+ charts generate without errors
 4. **Model Comparison**: Validate fine-tuning improvements (ECE, accuracy)
 5. **Calibration**: Verify Platt/Isotonic calibration works correctly
+
+## 🚀 **AWS SAGEMAKER DEPLOYMENT** ✅
+
+### Status: Successfully Deployed
+
+This project can be deployed to production using **Amazon SageMaker Inference Components** with LoRA adapters for cost-efficient multi-adapter inference.
+
+**Use Case**: Serve hundreds of customer-specific LoRA sentiment classifiers from a single endpoint using [SageMaker's multi-adapter inference capability](https://aws.amazon.com/blogs/machine-learning/easily-deploy-and-manage-hundreds-of-lora-adapters-with-sagemaker-efficient-multi-adapter-inference/).
+
+### Why SageMaker Inference Components?
+
+**Traditional Approach**:
+- 1 endpoint per customer/model
+- 1000 customers = 1000 endpoints = $$$$$
+- Endpoint startup time: 5-10 minutes per customer
+- Resource waste: Most endpoints idle most of the time
+
+**Inference Components Approach**:
+- 1 base model endpoint
+- 1000+ LoRA adapters loaded dynamically
+- Tiered caching: GPU (hot) → CPU (warm) → S3 (cold)
+- Cost: ~$150/month vs ~$150,000/month (1000x savings)
+- Startup: Base model once, adapters in <1 minute
+
+### Deployment Guide
+
+For complete deployment instructions, see **[docs/SAGEMAKER_DEPLOYMENT.md](docs/SAGEMAKER_DEPLOYMENT.md)**
+
+**Quick Start:**
+```bash
+# 1. Fine-tune your model locally
+python fine_tune_model.py
+
+# 2. Package and upload LoRA adapter to S3
+cd fine_tuned_sentiment_model
+tar -czf ../sentiment_adapter.tar.gz adapter_model.safetensors adapter_config.json
+aws s3 cp ../sentiment_adapter.tar.gz s3://your-bucket/adapters/
+
+# 3. Deploy to SageMaker
+export HF_TOKEN="your_huggingface_token"
+python3 scripts/deploy_sagemaker.py
+```
+
+**Deployment time**: ~20-30 minutes
+**Cost**: ~$1.25/hour (ml.g6e.xlarge with 48GB GPU)
+**Capability**: Serve 10+ LoRA adapters from one endpoint
+
+### Deployment Resources
+
+**Scripts**:
+- `scripts/deploy_sagemaker.py` - Complete deployment automation
+
+**Documentation**:
+- `docs/SAGEMAKER_DEPLOYMENT.md` - Complete deployment guide for multi-adapter inference

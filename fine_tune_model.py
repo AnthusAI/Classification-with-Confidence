@@ -43,6 +43,7 @@ from transformers import (
 )
 from peft import LoraConfig, get_peft_model, TaskType, PeftModel
 from datasets import Dataset
+from classification_config import ClassificationConfig, ClassificationMode, PromptTemplates
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -54,21 +55,51 @@ class SentimentFineTuner:
 
     def __init__(self,
                  model_name: str = "meta-llama/Llama-3.1-8B-Instruct",
-                 output_dir: str = "./fine_tuned_sentiment_model"):
+                 output_dir: str = "./fine_tuned_sentiment_model",
+                 config: ClassificationConfig = None):
         """
         Initialize the fine-tuner.
 
         Args:
             model_name: HuggingFace model identifier
             output_dir: Directory to save the fine-tuned model
+            config: Classification configuration
         """
         self.model_name = model_name
         self.output_dir = output_dir
         self.tokenizer = None
         self.model = None
 
+        # Use provided config or default to first-token mode
+        if config is None:
+            config = ClassificationConfig(mode=ClassificationMode.FIRST_TOKEN)
+        self.config = config
+
+        # Adjust output directory based on mode
+        if self.config.mode == ClassificationMode.LAST_TOKEN:
+            self.output_dir = output_dir.replace("fine_tuned_sentiment_model", "fine_tuned_sentiment_model_cot")
+
         # Create output directory
-        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(self.output_dir, exist_ok=True)
+
+        # Save configuration for evaluation
+        self._save_config()
+
+    def _save_config(self):
+        """Save classification configuration to the output directory."""
+        config_data = {
+            'mode': self.config.mode.value,
+            'model_name': self.model_name,
+            'positive_tokens': self.config.positive_tokens,
+            'negative_tokens': self.config.negative_tokens,
+            'use_chat_template': self.config.use_chat_template,
+            'temperature': self.config.temperature
+        }
+
+        config_path = os.path.join(self.output_dir, 'classification_config.json')
+        with open(config_path, 'w') as f:
+            json.dump(config_data, f, indent=2)
+        print(f"✅ Configuration saved to {config_path}")
 
     def _get_best_device(self) -> str:
         """Determine the best available device for training."""
@@ -214,9 +245,19 @@ class SentimentFineTuner:
             label = example['expected']
             category = example.get('category', 'unknown')
 
-            # Create instruction-response pairs
-            instruction = f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\nClassify the sentiment of this text as either 'positive' or 'negative':\n\n\"{text}\"<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-            response = f"{label}<|eot_id|>"
+            # Create instruction using proper chat template
+            instruction = PromptTemplates.create_fine_tuning_prompt(self.tokenizer, text, self.config.mode)
+
+            # Create response based on classification mode
+            if self.config.mode == ClassificationMode.FIRST_TOKEN:
+                # Direct classification: just the label
+                response = f"{label}<|eot_id|>"
+            else:
+                # Chain-of-thought: explanation + final answer
+                if label == 'positive':
+                    response = f"This text expresses positive sentiment through its language and tone. POSITIVE<|eot_id|>"
+                else:
+                    response = f"This text expresses negative sentiment through its language and tone. NEGATIVE<|eot_id|>"
 
             # Combine instruction and response for training
             full_text = instruction + response
@@ -240,9 +281,20 @@ class SentimentFineTuner:
             label = example['expected']
             category = example.get('category', 'unknown')
 
-            # Create instruction-response pairs for test set
-            instruction = f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\nClassify the sentiment of this text as either 'positive' or 'negative':\n\n\"{text}\"<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-            response = f"{label}<|eot_id|>"
+            # Create instruction using proper chat template
+            instruction = PromptTemplates.create_fine_tuning_prompt(self.tokenizer, text, self.config.mode)
+
+            # Create response based on classification mode
+            if self.config.mode == ClassificationMode.FIRST_TOKEN:
+                # Direct classification: just the label
+                response = f"{label}<|eot_id|>"
+            else:
+                # Chain-of-thought: explanation + final answer
+                if label == 'positive':
+                    response = f"This text expresses positive sentiment through its language and tone. POSITIVE<|eot_id|>"
+                else:
+                    response = f"This text expresses negative sentiment through its language and tone. NEGATIVE<|eot_id|>"
+
             full_text = instruction + response
 
             test_formatted_data.append({
@@ -657,7 +709,31 @@ class FineTunedSentimentClassifier:
 
 def main():
     """Run the fine-tuning process."""
-    print("FINE-TUNING: Fine-Tuning Llama 3.1 for Sentiment Classification")
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Fine-tune Llama 3.1 for sentiment classification')
+    parser.add_argument(
+        '--classification-mode',
+        choices=['first-token', 'last-token'],
+        default='first-token',
+        help='Classification mode: first-token (direct) or last-token (chain-of-thought)'
+    )
+    parser.add_argument(
+        '--output-dir',
+        default='./fine_tuned_sentiment_model',
+        help='Output directory for the fine-tuned model'
+    )
+
+    args = parser.parse_args()
+
+    # Create classification configuration
+    if args.classification_mode == 'last-token':
+        config = ClassificationConfig(mode=ClassificationMode.LAST_TOKEN)
+        print("FINE-TUNING: Chain-of-Thought Sentiment Classification")
+    else:
+        config = ClassificationConfig(mode=ClassificationMode.FIRST_TOKEN)
+        print("FINE-TUNING: Direct Sentiment Classification")
+
     print("=" * 60)
     
     # Check for required dependencies
@@ -691,8 +767,8 @@ def main():
     if not torch.backends.mps.is_available() and not torch.cuda.is_available():
         print("WARNING:  No GPU available - training will be slow on CPU")
 
-    # Initialize fine-tuner
-    fine_tuner = SentimentFineTuner()
+    # Initialize fine-tuner with configuration
+    fine_tuner = SentimentFineTuner(output_dir=args.output_dir, config=config)
 
     # Run fine-tuning
     try:
