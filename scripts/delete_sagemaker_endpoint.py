@@ -55,7 +55,8 @@ try:
         for comp in components:
             comp_name = comp['InferenceComponentName']
             details = sagemaker.describe_inference_component(InferenceComponentName=comp_name)
-            if 'BaseInferenceComponentName' in details['Specification']:
+            spec = details.get('Specification', {})
+            if 'BaseInferenceComponentName' in spec:
                 adapter_components.append(comp_name)
             else:
                 base_components.append(comp_name)
